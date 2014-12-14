@@ -332,7 +332,7 @@ class Image {
 			return $this->parse_link_template($image_ilink);
 		}
 		else if($config->get_bool('nice_urls', false)) {
-			return $this->parse_link_template(make_link('_images/$hash/$id%20-%20$tags.$ext'));
+			return $this->parse_link_template(make_link('_images/$hash.$ext'));
 		}
 		else {
 			return $this->parse_link_template(make_link('image/$id.$ext'));
@@ -367,7 +367,7 @@ class Image {
 			return $this->parse_link_template($image_tlink);
 		}
 		else if($config->get_bool('nice_urls', false)) {
-			return $this->parse_link_template(make_link('_thumbs/$hash/thumb.jpg'));
+			return $this->parse_link_template(make_link('_thumbs/$hash_thumb.jpg'));
 		}
 		else {
 			return $this->parse_link_template(make_link('thumb/$id.jpg'));

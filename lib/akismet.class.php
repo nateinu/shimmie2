@@ -188,7 +188,7 @@ class AkismetHttpClient extends AkismetObject {
 // order to use the Akismet service!
 class Akismet extends AkismetObject {
 	var $apiPort = 80;
-	var $akismetServer = 'rest.akismet.com';
+	var $akismetServer = 'https://rest.akismet.com';
 	var $akismetVersion = '1.1';
 	var $http;
 	

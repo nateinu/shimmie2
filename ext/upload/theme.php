@@ -25,7 +25,7 @@ class UploadTheme extends Themelet {
 					<tr><td colspan='6'><input id='uploadbutton' type='submit' value='Post'></td></tr>
 				</table>
 			</form>
-			<small>(Max file size is $max_kb)</small>
+			<small>(Max file size is $max_kb)</small><br /><br />
 		";
 		
 		$page->set_title("Upload");
@@ -237,6 +237,7 @@ class UploadTheme extends Themelet {
 			var CA=0;
 			void(document.body.appendChild(document.createElement(&quot;script&quot;)).src=&quot;'.make_http(get_base_href())."/ext/upload/bookmarklet.js".'&quot;)
 		">'. $title . '</a> (Click when looking at an image page. Works on sites running Shimmie / Danbooru / Gelbooru. (This also grabs the tags / rating / source!))';
+		$html = '<p>Check out the WhyNeko Wiki page on <a href=&quot;'.make_http(get_base_href()).'/wiki/Transloaders&quot;>Transloaders</a>!</p><br />';
 
 		return $html;
 	}
@@ -281,7 +282,7 @@ class UploadTheme extends Themelet {
 					<tr><td colspan='4'><input id='uploadbutton' type='submit' value='Post'></td></tr>
 				</table>
 			</form>
-			<small>(Max file size is $max_kb)</small>
+			<small>(Max file size is $max_kb)</small><br /><br />
 		";
 
 		$page->set_title("Replace Image");
@@ -339,7 +340,7 @@ class UploadTheme extends Themelet {
 				<input name='tags' type='text' placeholder='tagme' class='autocomplete_tags' required='required'>
 				<input type='submit' value='Post'>
 			</form>
-			<small>(Max file size is $max_kb)</small>
+			<small>(Max file size is $max_kb)</small><br /><br />
 			<noscript><br><a href='".make_link("upload")."'>Larger Form</a></noscript>
 			</div>
 		";

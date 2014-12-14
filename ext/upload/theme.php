@@ -237,7 +237,7 @@ class UploadTheme extends Themelet {
 			var CA=0;
 			void(document.body.appendChild(document.createElement(&quot;script&quot;)).src=&quot;'.make_http(get_base_href())."/ext/upload/bookmarklet.js".'&quot;)
 		">'. $title . '</a> (Click when looking at an image page. Works on sites running Shimmie / Danbooru / Gelbooru. (This also grabs the tags / rating / source!))';
-		$html = '<p>Check out the WhyNeko Wiki page on <a href=&quot;'.make_http(get_base_href()).'/wiki/Transloaders&quot;>Transloaders</a>!</p><br />';
+		$html = '<p>Check out the WhyNeko Wiki page on <a href="'.make_http(get_base_href()).'/wiki/Transloaders">Transloaders</a>!</p><br />';
 
 		return $html;
 	}

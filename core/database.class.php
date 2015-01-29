@@ -147,6 +147,7 @@ class PostgreSQL extends DBEngine {
 	 */
 	public function init($db) {
 		$db->exec("SET application_name TO 'shimmie [{$_SERVER['REMOTE_ADDR']}]';");
+		$db->exec("SET statement_timeout TO 10000;");
 	}
 
 	/**
@@ -318,6 +319,9 @@ class MemcacheCache implements CacheEngine {
 	public function set($key, $val, $time=0) {
 		assert(!is_null($key));
 		$this->memcache->set($key, $val, false, $time);
+		if((DEBUG_CACHE === true) || (is_null(DEBUG_CACHE) && @$_GET['DEBUG_CACHE'])) {
+			file_put_contents("data/cache.log", "Cache set: $key ($time)\n", FILE_APPEND);
+		}
 	}
 
 	/**
@@ -326,6 +330,9 @@ class MemcacheCache implements CacheEngine {
 	public function delete($key) {
 		assert(!is_null($key));
 		$this->memcache->delete($key);
+		if((DEBUG_CACHE === true) || (is_null(DEBUG_CACHE) && @$_GET['DEBUG_CACHE'])) {
+			file_put_contents("data/cache.log", "Cache delete: $key\n", FILE_APPEND);
+		}
 	}
 
 	/**
@@ -447,8 +454,7 @@ class Database {
 			PDO::ATTR_PERSISTENT => DATABASE_KA,
 			PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION
 		);
-		if(defined("HIPHOP")) $this->db = new PDO(DATABASE_DSN, $db_user, $db_pass);
-		else $this->db = new PDO(DATABASE_DSN, $db_user, $db_pass, $db_params);
+		$this->db = new PDO(DATABASE_DSN, $db_user, $db_pass, $db_params);
 
 		$this->connect_engine();
 		$this->engine->init($this->db);

@@ -46,6 +46,7 @@ class User {
 	 * would be to use User::by_id, User::by_session, etc.
 	 *
 	 * @param mixed $row
+	 * @throws SCoreException
 	 */
 	public function __construct($row) {
 		global $_user_classes;
@@ -55,7 +56,13 @@ class User {
 		$this->email = $row['email'];
 		$this->join_date = $row['joindate'];
 		$this->passhash = $row['pass'];
-		$this->class = $_user_classes[$row["class"]];
+
+		if(array_key_exists($row["class"], $_user_classes)) {
+			$this->class = $_user_classes[$row["class"]];
+		}
+		else {
+			throw new SCoreException("User '{$this->name}' has invalid class '{$row["class"]}'");
+		}
 	}
 
 	/**

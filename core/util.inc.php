@@ -402,9 +402,14 @@ function modify_url($url, $changes) {
  * @return string
  */
 function make_http(/*string*/ $link) {
-	if(strpos($link, "ttp://") > 0) return $link;
-	if(strlen($link) > 0 && $link[0] != '/') $link = get_base_href().'/'.$link;
-	$link = "https://".$_SERVER["HTTP_HOST"].$link;
+	if(strpos($link, "ttp://") > 0) {
+		return $link;
+	}
+	if(strlen($link) > 0 && $link[0] != '/') {
+		$link = get_base_href() . '/' . $link;
+	}
+	$protocol = is_https_enabled() ? "https://" : "http://";
+	$link = $protocol . $_SERVER["HTTP_HOST"] . $link;
 	$link = str_replace("/./", "/", $link);
 	return $link;
 }
@@ -548,6 +553,15 @@ function captcha_check() {
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Misc                                                                      *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+
+/**
+ * Check if HTTPS is enabled for the server.
+ *
+ * @return bool True if HTTPS is enabled
+ */
+function is_https_enabled() {
+	return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+}
 
 /**
  * Get MIME type for file
@@ -943,11 +957,6 @@ function transload($url, $mfile) {
 		fwrite($fp, $data);
 		fclose($fp);
 
-		//
-		// Scrutinizer-ci complains that $http_response_header does not exist,
-		// however, $http_response_header is actually a super-global.
-		// I have filed a bug with PHP-Analyzer here: https://github.com/scrutinizer-ci/php-analyzer/issues/212
-		//
 		$headers = http_parse_headers(implode("\n", $http_response_header));
 
 		return $headers;

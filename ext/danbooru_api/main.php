@@ -247,12 +247,12 @@ class DanbooruApi extends Extension {
 				"preview_url" => $img->get_thumb_link(),
 				"preview_height" => $previewsize[1],
 				"preview_width" => $previewsize[0],
-				"rating" => "u",
+				"rating" => $img->rating,
 				"date" => $img->posted,
 				"is_warehoused" => false,
 				"tags" => $taglist,
 				"source" => $img->source,
-				"score" => 0,
+				"score" => $img->numeric_score,
 				"author" => $owner->name
 			));
 		}

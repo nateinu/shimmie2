@@ -1,42 +1,162 @@
-<?php
-class PoolsTest extends ShimmiePHPUnitTestCase {
-	public function testPools() {
-		$this->get_page('pool/list');
-		$this->assert_title("Pools");
+<?php declare(strict_types=1);
+class PoolsTest extends ShimmiePHPUnitTestCase
+{
+    public function testAnon()
+    {
+        $this->get_page('pool/list');
+        $this->assert_title("Pools");
 
-		$this->get_page('pool/new');
-		$this->assert_title("Error");
+        $this->get_page('pool/new');
+        $this->assert_title("Error");
+    }
 
-		$this->log_in_as_user();
-		$this->get_page('pool/list');
+    public function testCreate()
+    {
+        $this->log_in_as_user();
+        $image_id_1 = $this->post_image("tests/pbx_screenshot.jpg", "pbx");
+        $image_id_2 = $this->post_image("tests/bedroom_workshop.jpg", "pbx");
+        $this->assertNotNull($image_id_1);
+        $this->assertNotNull($image_id_2);
 
-		$this->markTestIncomplete();
+        $this->get_page("pool/new");
 
-		$this->click("Create Pool");
-		$this->assert_title("Create Pool");
-		$this->click("Create");
-		$this->assert_title("Error");
+        $page = $this->post_page("pool/create", [
+            "title" => "foo",
+            "public" => "Y",
+            "description" => "My pool description",
+        ]);
+        $pool_id = (int)(explode("/", $page->redirect)[4]);
+        send_event(new PoolAddPostsEvent($pool_id, [$image_id_1, $image_id_2]));
 
-		$this->get_page('pool/new');
-		$this->assert_title("Create Pool");
-		$this->set_field("title", "Test Pool Title");
-		$this->set_field("description", "Test pool description");
-		$this->click("Create");
-		$this->assert_title("Pool: Test Pool Title");
+        return [$pool_id, [$image_id_1, $image_id_2]];
+    }
 
-		$this->log_out();
+    /** @depends testCreate */
+    public function testOnViewImage($args)
+    {
+        [$pool_id, $image_ids] = $args;
 
+        global $config;
+        $config->set_bool(PoolsConfig::ADDER_ON_VIEW_IMAGE, true);
+        $config->set_bool(PoolsConfig::INFO_ON_VIEW_IMAGE, true);
+        $config->set_bool(PoolsConfig::SHOW_NAV_LINKS, true);
 
-		$this->log_in_as_admin();
+        $this->get_page("post/view/{$image_ids[0]}");
+        $this->assert_text("Pool");
+    }
 
-		$this->get_page('pool/list');
-		$this->click("Test Pool Title");
-		$this->assert_title("Pool: Test Pool Title");
-		$this->click("Delete Pool");
-		$this->assert_title("Pools");
-		$this->assert_no_text("Test Pool Title");
+    /** @depends testCreate */
+    public function testSearch($args)
+    {
+        [$pool_id, $image_ids] = $args;
 
-		$this->log_out();
-	}
+        $this->get_page("post/list/pool=$pool_id/1");
+        $this->assert_text("Pool");
+
+        $this->get_page("post/list/pool_by_name=demo_pool/1");
+        $this->assert_text("Pool");
+    }
+
+    /** @depends testCreate */
+    public function testList($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $this->get_page("pool/list");
+        $this->assert_text("Pool");
+    }
+
+    /** @depends testCreate */
+    public function testView($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $this->get_page("pool/view/$pool_id");
+        $this->assert_text("Pool");
+    }
+
+    /** @depends testCreate */
+    public function testHistory($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $this->get_page("pool/updated/$pool_id");
+        $this->assert_text("Pool");
+    }
+
+    /** @depends testCreate */
+    public function testImport($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $this->post_page("pool/import", [
+            "pool_id" => $pool_id,
+            "pool_tag" => "test"
+        ]);
+        $this->assert_text("Pool");
+    }
+
+    /** @depends testCreate */
+    public function testRemovePosts($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $page = $this->post_page("pool/remove_posts", [
+            "pool_id" => $pool_id,
+            "check" => [(string)($image_ids[0]), (string)($image_ids[1])]
+        ]);
+        $this->assertEquals("redirect", $page->mode);
+
+        return $args;
+    }
+
+    /** @depends testRemovePosts */
+    public function testAddPosts($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $page = $this->post_page("pool/add_posts", [
+            "pool_id" => $pool_id,
+            "check" => [(string)($image_ids[0]), (string)($image_ids[1])]
+        ]);
+        $this->assertEquals("redirect", $page->mode);
+    }
+
+    /** @depends testCreate */
+    public function testEditDescription($args)
+    {
+        [$pool_id, $image_ids] = $args;
+
+        $page = $this->post_page("pool/edit_description", [
+            "pool_id" => $pool_id,
+            "description" => "Updated description"
+        ]);
+        $this->assertEquals("redirect", $page->mode);
+
+        return $args;
+    }
+
+    public function testNuke()
+    {
+        $this->log_in_as_user();
+        $image_id_1 = $this->post_image("tests/pbx_screenshot.jpg", "pbx");
+        $image_id_2 = $this->post_image("tests/bedroom_workshop.jpg", "pbx");
+        $this->assertNotNull($image_id_1);
+        $this->assertNotNull($image_id_2);
+
+        $this->get_page("pool/new");
+
+        $page = $this->post_page("pool/create", [
+            "title" => "foo2",
+            "public" => "Y",
+            "description" => "My pool description",
+        ]);
+        $pool_id = (int)(explode("/", $page->redirect)[4]);
+        send_event(new PoolAddPostsEvent($pool_id, [$image_id_1, $image_id_2]));
+
+        $page = $this->post_page("pool/nuke", [
+            "pool_id" => "$pool_id",
+        ]);
+        $this->assertEquals("redirect", $page->mode);
+    }
 }
-

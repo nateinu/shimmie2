@@ -1,85 +1,131 @@
-<?php
-/*
- * Name: System Info
- * Author: Shish <webmaster@shishnet.org>
- * License: GPLv2
- * Description: Show various bits of system information
- * Documentation:
- *  Knowing the information that this extension shows can be
- *  very useful for debugging. There's also an option to send
- *  your stats to my database, so I can get some idea of how
- *  shimmie is used, which servers I need to support, which
- *  versions of PHP I should test with, etc.
- */
+<?php declare(strict_types=1);
 
-class ET extends Extension {
-	public function onPageRequest(PageRequestEvent $event) {
-		global $user;
-		if($event->page_matches("system_info")) {
-			if($user->can("view_sysinfo")) {
-				$this->theme->display_info_page($this->get_info());
-			}
-		}
-	}
+class ET extends Extension
+{
+    /** @var ETTheme */
+    protected $theme;
 
-	public function onUserBlockBuilding(UserBlockBuildingEvent $event) {
-		global $user;
-		if($user->can("view_sysinfo")) {
-			$event->add_link("System Info", make_link("system_info"));
-		}
-	}
+    public function onPageRequest(PageRequestEvent $event)
+    {
+        global $user;
+        if ($event->page_matches("system_info")) {
+            if ($user->can(Permissions::VIEW_SYSINTO)) {
+                $this->theme->display_info_page($this->to_yaml($this->get_info()));
+            }
+        }
+    }
 
-	/**
-	 * Collect the information and return it in a keyed array.
-	 */
-	private function get_info() {
-		global $config, $database;
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    {
+        global $user;
+        if ($event->parent==="system") {
+            if ($user->can(Permissions::VIEW_SYSINTO)) {
+                $event->add_nav_link("system_info", new Link('system_info'), "System Info", null, 10);
+            }
+        }
+    }
 
-		$info = array();
-		$info['site_title'] = $config->get_string("title");
-		$info['site_theme'] = $config->get_string("theme");
-		$info['site_url']   = "http://" . $_SERVER["HTTP_HOST"] . get_base_href();
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event)
+    {
+        global $user;
+        if ($user->can(Permissions::VIEW_SYSINTO)) {
+            $event->add_link("System Info", make_link("system_info"), 99);
+        }
+    }
 
-		$info['sys_shimmie'] = VERSION;
-		$info['sys_schema']  = $config->get_string("db_version");
-		$info['sys_php']     = phpversion();
-		$info['sys_db']      = $database->get_driver_name();
-		$info['sys_os']      = php_uname();
-		$info['sys_disk']    = to_shorthand_int(disk_total_space("./") - disk_free_space("./")) . " / " .
-		                       to_shorthand_int(disk_total_space("./"));
-		$info['sys_server']  = isset($_SERVER["SERVER_SOFTWARE"]) ? $_SERVER["SERVER_SOFTWARE"] : 'unknown';
-		
-		$info['thumb_engine']	= $config->get_string("thumb_engine");
-		$info['thumb_quality']	= $config->get_int('thumb_quality');
-		$info['thumb_width']	= $config->get_int('thumb_width');
-		$info['thumb_height']	= $config->get_int('thumb_height');
-		$info['thumb_mem']		= $config->get_int("thumb_mem_limit");
+    public function onCommand(CommandEvent $event)
+    {
+        if ($event->cmd == "help") {
+            print "\tshimmie-info\n";
+            print "\t\tList a bunch of info\n\n";
+        }
+        if ($event->cmd == "shimmie-info") {
+            print($this->to_yaml($this->get_info()));
+        }
+    }
 
-		$info['stat_images']   = $database->get_one("SELECT COUNT(*) FROM images");
-		$info['stat_comments'] = $database->get_one("SELECT COUNT(*) FROM comments");
-		$info['stat_users']    = $database->get_one("SELECT COUNT(*) FROM users");
-		$info['stat_tags']     = $database->get_one("SELECT COUNT(*) FROM tags");
-		$info['stat_image_tags'] = $database->get_one("SELECT COUNT(*) FROM image_tags");
+    /**
+     * Collect the information and return it in a keyed array.
+     */
+    private function get_info(): array
+    {
+        global $config, $database;
 
-		$els = array();
-		foreach(get_declared_classes() as $class) {
-			$rclass = new ReflectionClass($class);
-			if($rclass->isAbstract()) {
-				// don't do anything
-			}
-			elseif(is_subclass_of($class, "Extension")) {
-				$els[] = $class;
-			}
-		}
-		$info['sys_extensions'] = join(', ', $els);
+        $core_exts = ExtensionInfo::get_core_extensions();
+        $extra_exts = [];
+        foreach (ExtensionInfo::get_all() as $info) {
+            if ($info->is_enabled() && !in_array($info->key, $core_exts)) {
+                $extra_exts[] = $info->key;
+            }
+        }
 
-		//$cfs = array();
-		//foreach($database->get_all("SELECT name, value FROM config") as $pair) {
-		//	$cfs[] = $pair['name']."=".$pair['value'];
-		//}
-		//$info[''] = "Config: ".join(", ", $cfs);
+        $info = [
+            "about" => [
+                'title' => $config->get_string(SetupConfig::TITLE),
+                'theme' => $config->get_string(SetupConfig::THEME),
+                'url'   => make_http(make_link("/")),
+            ],
+            "versions" => [
+                'shimmie' => VERSION,
+                'schema'  => $config->get_int("db_version"),
+                'php'     => phpversion(),
+                'db'      => $database->get_driver_name() . " " . $database->get_version(),
+                'os'      => php_uname(),
+                'server'  =>  $_SERVER["SERVER_SOFTWARE"] ?? 'unknown',
+            ],
+            "extensions" => [
+                "core" => $core_exts,
+                "extra" => $extra_exts,
+                "handled_mimes" => DataHandlerExtension::get_all_supported_mimes(),
+            ],
+            "stats" => [
+                'images'   => (int)$database->get_one("SELECT COUNT(*) FROM images"),
+                'comments' => (int)$database->get_one("SELECT COUNT(*) FROM comments"),
+                'users'    => (int)$database->get_one("SELECT COUNT(*) FROM users"),
+            ],
+            "media" => [
+                "memory_limit" => to_shorthand_int($config->get_int(MediaConfig::MEM_LIMIT)),
+                "disk_use" => to_shorthand_int((int)disk_total_space("./") - (int)disk_free_space("./")),
+                "disk_total" => to_shorthand_int((int)disk_total_space("./")),
+            ],
+            "thumbnails" => [
+                "engine" => $config->get_string(ImageConfig::THUMB_ENGINE),
+                "quality" => $config->get_int(ImageConfig::THUMB_QUALITY),
+                "width" => $config->get_int(ImageConfig::THUMB_WIDTH),
+                "height" => $config->get_int(ImageConfig::THUMB_HEIGHT),
+                "scaling" => $config->get_int(ImageConfig::THUMB_SCALING),
+                "mime" => $config->get_string(ImageConfig::THUMB_MIME),
+            ],
+        ];
 
-		return $info;
-	}
+        if (file_exists(".git")) {
+            try {
+                $commitHash = trim(exec('git log --pretty="%h" -n1 HEAD'));
+                $commitBranch= trim(exec('git rev-parse --abbrev-ref HEAD'));
+                $commitOrigin= trim(exec('git config --get remote.origin.url'));
+                $commitOrigin= preg_replace("#//.*@#", "//xxx@", $commitOrigin);
+                $info['git'] = [
+                    'commit' => $commitHash,
+                    'branch' => $commitBranch,
+                    'origin' => $commitOrigin,
+                ];
+            } catch (Exception $e) {
+            }
+        }
+
+        return $info;
+    }
+
+    private function to_yaml($info)
+    {
+        $data = "";
+        foreach ($info as $title => $section) {
+            $data .= "$title:\n";
+            foreach ($section as $k => $v) {
+                $data .= "  $k: " . json_encode($v, JSON_UNESCAPED_SLASHES) . "\n";
+            }
+            $data .= "\n";
+        }
+        return $data;
+    }
 }
-

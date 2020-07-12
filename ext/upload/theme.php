@@ -39,7 +39,7 @@ class UploadTheme extends Themelet
         $page->add_block(new NavBlock());
         $page->add_block(new Block("Upload", $html, "main", 20));
         if ($tl_enabled) {
-            $page->add_block(new Block("Bookmarklets", $this->h_bookmarklets(), "left", 20));
+            $page->add_block(new Block("Bookmarklets", $this->h_bookmarklets(), "main", 20));
         }
     }
 

@@ -488,6 +488,7 @@ class Image
      */
     public function get_image_link(): string
     {
+        return $this->get_link(ImageConfig::ILINK, '_images/$hash.$ext', 'image/$id.$ext');
         return $this->get_link(ImageConfig::ILINK, '_images/$hash/$id%20-%20$tags.$ext', 'image/$id.$ext');
     }
 

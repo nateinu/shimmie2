@@ -34,14 +34,6 @@ class Database
     private $engine = null;
 
     /**
-     * A boolean flag to track if we already have an active transaction.
-     * (ie: True if beginTransaction() already called)
-     *
-     * @var bool
-     */
-    public $transaction = false;
-
-    /**
      * How many queries this DB object has run
      */
     public $query_count = 0;
@@ -53,13 +45,9 @@ class Database
 
     private function connect_db(): void
     {
-        $this->db = new PDO($this->dsn, [
-            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-        ]);
-
+        $this->db = new PDO($this->dsn);
         $this->connect_engine();
         $this->engine->init($this->db);
-
         $this->begin_transaction();
     }
 
@@ -87,21 +75,19 @@ class Database
 
     public function begin_transaction(): void
     {
-        if ($this->transaction === false) {
+        if ($this->is_transaction_open() === false) {
             $this->db->beginTransaction();
-            $this->transaction = true;
         }
     }
 
     public function is_transaction_open(): bool
     {
-        return !is_null($this->db) && $this->transaction === true;
+        return !is_null($this->db) && $this->db->inTransaction();
     }
 
     public function commit(): bool
     {
         if ($this->is_transaction_open()) {
-            $this->transaction = false;
             return $this->db->commit();
         } else {
             throw new SCoreException("Unable to call commit() as there is no transaction currently open.");
@@ -111,7 +97,6 @@ class Database
     public function rollback(): bool
     {
         if ($this->is_transaction_open()) {
-            $this->transaction = false;
             return $this->db->rollback();
         } else {
             throw new SCoreException("Unable to call rollback() as there is no transaction currently open.");
@@ -124,19 +109,6 @@ class Database
             $this->connect_engine();
         }
         return $this->engine->scoreql_to_sql($input);
-    }
-
-    public function scoresql_value_prepare($input)
-    {
-        if (is_null($this->engine)) {
-            $this->connect_engine();
-        }
-        if ($input===true) {
-            return $this->engine->BOOL_Y;
-        } elseif ($input===false) {
-            return $this->engine->BOOL_N;
-        }
-        return $input;
     }
 
     public function get_driver_name(): string
@@ -167,6 +139,11 @@ class Database
     public function set_timeout(int $time): void
     {
         $this->engine->set_timeout($this->db, $time);
+    }
+
+    public function notify(string $channel, ?string $data=null): void
+    {
+        $this->engine->notify($this->db, $channel, $data);
     }
 
     public function execute(string $query, array $args = []): PDOStatement
@@ -253,6 +230,20 @@ class Database
         return $res;
     }
 
+
+    /**
+     * Execute an SQL query and return the the first column => the second column as an iterable object.
+     */
+    public function get_pairs_iterable(string $query, array $args = []): Generator
+    {
+        $_start = microtime(true);
+        $stmt = $this->execute($query, $args);
+        $this->count_time("get_pairs_iterable", $_start, $query, $args);
+        foreach ($stmt as $row) {
+            yield $row[0] => $row[1];
+        }
+    }
+
     /**
      * Execute an SQL query and return a single value, or null.
      */
@@ -335,5 +326,30 @@ class Database
     public function raw_db(): PDO
     {
         return $this->db;
+    }
+
+    public function standardise_boolean(string $table, string $column, bool $include_postgres=false): void
+    {
+        $d = $this->get_driver_name();
+        if ($d == DatabaseDriver::MYSQL) {
+            # In mysql, ENUM('Y', 'N') is secretly INTEGER where Y=1 and N=2.
+            # BOOLEAN is secretly TINYINT where true=1 and false=0.
+            # So we can cast directly from ENUM to BOOLEAN which gives us a
+            # column of values 'true' and 'invalid but who cares lol', which
+            # we can then UPDATE to be 'true' and 'false'.
+            $this->execute("ALTER TABLE $table MODIFY COLUMN $column BOOLEAN;");
+            $this->execute("UPDATE $table SET $column=0 WHERE $column=2;");
+        }
+        if ($d == DatabaseDriver::SQLITE) {
+            # SQLite doesn't care about column types at all, everything is
+            # text, so we can in-place replace a char with a bool
+            $this->execute("UPDATE $table SET $column = ($column IN ('Y', 1))");
+        }
+        if ($d == DatabaseDriver::PGSQL && $include_postgres) {
+            $this->execute("ALTER TABLE $table ADD COLUMN ${column}_b BOOLEAN DEFAULT FALSE NOT NULL");
+            $this->execute("UPDATE $table SET ${column}_b = ($column = 'Y')");
+            $this->execute("ALTER TABLE $table DROP COLUMN $column");
+            $this->execute("ALTER TABLE $table RENAME COLUMN ${column}_b TO $column");
+        }
     }
 }

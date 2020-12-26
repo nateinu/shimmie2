@@ -17,9 +17,14 @@ abstract class ImageConfig
     const ILINK =            'image_ilink';
     const TLINK =            'image_tlink';
     const TIP =              'image_tip';
+    const INFO =             'image_info';
     const EXPIRES =          'image_expires';
     const UPLOAD_COLLISION_HANDLER = 'upload_collision_handler';
 
     const COLLISION_MERGE =  'merge';
     const COLLISION_ERROR =  'error';
+
+    const ON_DELETE =        'image_on_delete';
+    const ON_DELETE_NEXT =   'next';
+    const ON_DELETE_LIST =   'list';
 }

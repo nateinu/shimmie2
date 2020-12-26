@@ -48,37 +48,6 @@ class TagList extends Extension
                     break;
             }
             $this->theme->display_page($page);
-        } elseif ($event->page_matches("api/internal/tag_list/complete")) {
-            if (!isset($_GET["s"]) || $_GET["s"] == "" || $_GET["s"] == "_") {
-                return;
-            }
-
-            //$limit = 0;
-            $cache_key = "autocomplete-" . strtolower($_GET["s"]);
-            $limitSQL = "";
-            $SQLarr = ["search"=>$_GET["s"]."%"];
-            if (isset($_GET["limit"]) && $_GET["limit"] !== 0) {
-                $limitSQL = "LIMIT :limit";
-                $SQLarr['limit'] = $_GET["limit"];
-                $cache_key .= "-" . $_GET["limit"];
-            }
-
-            $res = null;
-            $cache->get($cache_key);
-            if (!$res) {
-                $res = $database->get_col("
-					SELECT tag
-					FROM tags
-					WHERE LOWER(tag) LIKE LOWER(:search)
-						AND count > 0
-					$limitSQL
-				", $SQLarr);
-                $cache->set($cache_key, $res, 600);
-            }
-
-            $page->set_mode(PageMode::DATA);
-            $page->set_mime(MimeType::TEXT);
-            $page->set_data(implode("\n", $res));
         }
     }
 
@@ -112,14 +81,16 @@ class TagList extends Extension
     {
         global $config, $page;
         if ($config->get_int(TagListConfig::LENGTH) > 0) {
-            if ($config->get_string(TagListConfig::IMAGE_TYPE) == TagListConfig::TYPE_RELATED) {
-                $this->add_related_block($page, $event->image);
-            } else {
+            $type = $config->get_string(TagListConfig::IMAGE_TYPE);
+            if ($type == TagListConfig::TYPE_TAGS || $type == TagListConfig::TYPE_BOTH) {
                 if (class_exists("TagCategories") and $config->get_bool(TagCategoriesConfig::SPLIT_ON_VIEW)) {
                     $this->add_split_tags_block($page, $event->image);
                 } else {
                     $this->add_tags_block($page, $event->image);
                 }
+            }
+            if ($type == TagListConfig::TYPE_RELATED || $type == TagListConfig::TYPE_BOTH) {
+                $this->add_related_block($page, $event->image);
             }
         }
     }
@@ -143,7 +114,7 @@ class TagList extends Extension
         $sb->add_choice_option(
             TagListConfig::IMAGE_TYPE,
             TagListConfig::TYPE_CHOICES,
-            "Image tag list",
+            "Post tag list",
             true
         );
         $sb->add_choice_option(
@@ -198,8 +169,8 @@ class TagList extends Extension
                 $i++;
                 $arg = "tag$i";
                 $args[$arg] = Tag::sqlify($tag);
-                if (strpos($tag, '*') === false
-                    && strpos($tag, '?') === false) {
+                if (!str_contains($tag, '*')
+                    && !str_contains($tag, '?')) {
                     $where[] = " tag = :$arg ";
                 } else {
                     $where[] = " tag LIKE :$arg ";
@@ -268,21 +239,24 @@ class TagList extends Extension
         $starts_with = $this->get_starts_with();
 
         // check if we have a cached version
-        $cache_key = warehouse_path("cache/tag_cloud", md5("tc" . $tags_min . $starts_with));
+        $cache_key = warehouse_path(
+            "cache/tag_cloud",
+            md5("tc" . $tags_min . $starts_with . VERSION)
+        );
         if (file_exists($cache_key)) {
             return file_get_contents($cache_key);
         }
 
         // SHIT: PDO/pgsql has problems using the same named param twice -_-;;
         $tag_data = $database->get_all("
-				SELECT
-					tag,
-					FLOOR(LOG(2.7, LOG(2.7, count - :tags_min2 + 1)+1)*1.5*100)/100 AS scaled
-				FROM tags
-				WHERE count >= :tags_min
-				AND LOWER(tag) LIKE LOWER(:starts_with)
-				ORDER BY LOWER(tag)
-			", ["tags_min"=>$tags_min, "tags_min2"=>$tags_min, "starts_with"=>$starts_with]);
+            SELECT
+                tag,
+                FLOOR(LOG(2.7, LOG(2.7, count - :tags_min2 + 1)+1)*1.5*100)/100 AS scaled
+            FROM tags
+            WHERE count >= :tags_min
+            AND LOWER(tag) LIKE LOWER(:starts_with)
+            ORDER BY LOWER(tag)
+        ", ["tags_min"=>$tags_min, "tags_min2"=>$tags_min, "starts_with"=>$starts_with]);
 
         $html = "";
         if ($config->get_bool(TagListConfig::PAGES)) {
@@ -321,18 +295,21 @@ class TagList extends Extension
         $starts_with = $this->get_starts_with();
 
         // check if we have a cached version
-        $cache_key = warehouse_path("cache/tag_alpha", md5("ta" . $tags_min . $starts_with));
+        $cache_key = warehouse_path(
+            "cache/tag_alpha",
+            md5("ta" . $tags_min . $starts_with . VERSION)
+        );
         if (file_exists($cache_key)) {
             return file_get_contents($cache_key);
         }
 
         $tag_data = $database->get_pairs("
-				SELECT tag, count
-				FROM tags
-				WHERE count >= :tags_min
-				AND LOWER(tag) LIKE LOWER(:starts_with)
-				ORDER BY LOWER(tag)
-				", ["tags_min"=>$tags_min, "starts_with"=>$starts_with]);
+            SELECT tag, count
+            FROM tags
+            WHERE count >= :tags_min
+            AND LOWER(tag) LIKE LOWER(:starts_with)
+            ORDER BY LOWER(tag)
+        ", ["tags_min"=>$tags_min, "starts_with"=>$starts_with]);
 
         $html = "";
         if ($config->get_bool(TagListConfig::PAGES)) {
@@ -399,17 +376,20 @@ class TagList extends Extension
         }
 
         // check if we have a cached version
-        $cache_key = warehouse_path("cache/tag_popul", md5("tp" . $tags_min));
+        $cache_key = warehouse_path(
+            "cache/tag_popul",
+            md5("tp" . $tags_min . VERSION)
+        );
         if (file_exists($cache_key)) {
             return file_get_contents($cache_key);
         }
 
         $tag_data = $database->get_all("
-				SELECT tag, count, FLOOR(LOG(count)) AS scaled
-				FROM tags
-				WHERE count >= :tags_min
-				ORDER BY count DESC, tag ASC
-				", ["tags_min"=>$tags_min]);
+            SELECT tag, count, FLOOR(LOG(count)) AS scaled
+            FROM tags
+            WHERE count >= :tags_min
+            ORDER BY count DESC, tag ASC
+        ", ["tags_min"=>$tags_min]);
 
         $html = "Results grouped by log<sub>10</sub>(n)";
         $lastLog = "";
@@ -463,7 +443,7 @@ class TagList extends Extension
 
         $tags = $database->get_all($query, $args);
         if (count($tags) > 0) {
-            $this->theme->display_related_block($page, $tags);
+            $this->theme->display_related_block($page, $tags, "Related Tags");
         }
     }
 
@@ -501,7 +481,7 @@ class TagList extends Extension
 
         $tags = $database->get_all($query, $args);
         if (count($tags) > 0) {
-            $this->theme->display_related_block($page, $tags);
+            $this->theme->display_related_block($page, $tags, "Tags");
         }
     }
 
@@ -578,7 +558,7 @@ class TagList extends Extension
             $starting_tags = [];
             $tags_ok = true;
             foreach ($wild_tags as $tag) {
-                if ($tag[0] == "-" || strpos($tag, "tagme")===0) {
+                if ($tag[0] == "-" || str_starts_with($tag, "tagme")) {
                     continue;
                 }
                 $tag = Tag::sqlify($tag);

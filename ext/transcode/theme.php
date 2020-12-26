@@ -18,7 +18,7 @@ class TranscodeImageTheme extends Themelet
                 <input type='hidden' name='image_id' value='{$image->id}'>
                 <input type='hidden' id='image_lossless' name='image_lossless' value='{$image->lossless}'>
                 ".$this->get_transcode_picker_html($options)."
-				<br><input id='transcodebutton' type='submit' value='Transcode'>
+				<br><input id='transcodebutton' type='submit' value='Transcode Image'>
 			</form>
 		";
 

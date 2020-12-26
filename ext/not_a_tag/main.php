@@ -55,7 +55,12 @@ class NotATag extends Extension
 
     public function onTagSet(TagSetEvent $event)
     {
-        $this->scan($event->tags);
+        global $user;
+        if ($user->can(Permissions::BAN_IMAGE)) {
+            $event->tags = $this->strip($event->tags);
+        } else {
+            $this->scan($event->tags);
+        }
     }
 
     /**
@@ -70,15 +75,36 @@ class NotATag extends Extension
             $tags[] = strtolower($tag);
         }
 
-        $pairs = $database->get_all("SELECT * FROM untags");
-        foreach ($pairs as $tag_url) {
-            $tag = strtolower($tag_url[0]);
-            $url = $tag_url[1];
-            if (in_array($tag, $tags)) {
-                header("Location: $url");
-                exit; # FIXME: need a better way of aborting the tag-set or upload
+        $pairs = $database->get_pairs("SELECT LOWER(tag), redirect FROM untags");
+        foreach ($pairs as $tag => $url) {
+            // cast to string because PHP automatically turns ["69" => "No sex"]
+            // into [69 => "No sex"]
+            if (in_array(strtolower((string)$tag), $tags)) {
+                throw new TagSetException("Invalid tag used: $tag", $url);
             }
         }
+    }
+
+    /**
+     * #param string[] $tags
+     */
+    private function strip(array $tags): array
+    {
+        global $database;
+        $untags = $database->get_col("SELECT LOWER(tag) FROM untags");
+
+        $ok_tags = [];
+        foreach ($tags as $tag) {
+            if (!in_array(strtolower($tag), $untags)) {
+                $ok_tags[] = $tag;
+            }
+        }
+
+        if (count($ok_tags) == 0) {
+            $ok_tags = ["tagme"];
+        }
+
+        return $ok_tags;
     }
 
     public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
@@ -121,7 +147,7 @@ class NotATag extends Extension
                         "DELETE FROM untags WHERE LOWER(tag) = LOWER(:tag)",
                         ["tag"=>$input['d_tag']]
                     );
-                    $page->flash("Image ban removed");
+                    $page->flash("Post ban removed");
                     $page->set_mode(PageMode::REDIRECT);
                     $page->set_redirect(referer_or(make_link()));
                 } elseif ($event->get_arg(0) == "list") {
@@ -132,31 +158,5 @@ class NotATag extends Extension
                 }
             }
         }
-    }
-
-    public function get_untags(int $page, int $size=100): array
-    {
-        global $database;
-
-        // FIXME: many
-        $where = ["(1=1)"];
-        $args = ["limit"=>$size, "offset"=>($page-1)*$size];
-        if (!empty($_GET['tag'])) {
-            $where[] = 'LOWER(tag) LIKE LOWER(:tag)';
-            $args["tag"] = "%".$_GET['tag']."%";
-        }
-        if (!empty($_GET['redirect'])) {
-            $where[] = 'LOWER(redirect) LIKE LOWER(:redirect)';
-            $args["redirect"] = "%".$_GET['redirect']."%";
-        }
-        $where = implode(" AND ", $where);
-        return $database->get_all("
-			SELECT *
-			FROM untags
-			WHERE $where
-			ORDER BY tag
-			LIMIT :limit
-			OFFSET :offset
-		", $args);
     }
 }

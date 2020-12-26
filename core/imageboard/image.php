@@ -13,8 +13,6 @@ class Image
     public const IMAGE_DIR = "images";
     public const THUMBNAIL_DIR = "thumbs";
 
-    public static $order_sql = null; // this feels ugly
-
     /** @var null|int */
     public $id = null;
 
@@ -63,6 +61,9 @@ class Image
     /** @var boolean */
     public $video = null;
 
+    /** @var string */
+    public $video_codec = null;
+
     /** @var boolean */
     public $image = null;
 
@@ -83,6 +84,10 @@ class Image
     {
         if (!is_null($row)) {
             foreach ($row as $name => $value) {
+                if (is_numeric($name)) {
+                    continue;
+                }
+
                 // some databases use table.name rather than name
                 $name = str_replace("images.", "", $name);
 
@@ -155,11 +160,8 @@ class Image
             }
         }
 
-        $order = (Image::$order_sql ?: "images.".$config->get_string(IndexConfig::ORDER));
-        $querylet = Image::build_search_querylet($tags, $order, $limit, $start);
+        $querylet = Image::build_search_querylet($tags, $limit, $start);
         $result = $database->get_all_iterable($querylet->sql, $querylet->variables);
-
-        Image::$order_sql = null;
 
         return $result;
     }
@@ -226,11 +228,11 @@ class Image
         global $cache, $database;
         $tag_count = count($tags);
 
-        if ($tag_count === 0) {
+        if (SPEED_HAX && $tag_count === 0) {
             // total number of images in the DB
             $total = self::count_total_images();
-        } elseif ($tag_count === 1 && !preg_match("/[:=><\*\?]/", $tags[0])) {
-            if (!startsWith($tags[0], "-")) {
+        } elseif (SPEED_HAX && $tag_count === 1 && !preg_match("/[:=><\*\?]/", $tags[0])) {
+            if (!str_starts_with($tags[0], "-")) {
                 // one tag - we can look that up directly
                 $total = self::count_tag($tags[0]);
             } else {
@@ -276,14 +278,19 @@ class Image
     {
         $tag_conditions = [];
         $img_conditions = [];
+        $stpen = 0;  // search term parse event number
+        $order = null;
 
         /*
          * Turn a bunch of strings into a bunch of TagCondition
          * and ImgCondition objects
          */
-        $stpe = send_event(new SearchTermParseEvent(null, $terms));
-        if ($stpe->is_querylet_set()) {
-            foreach ($stpe->get_querylets() as $querylet) {
+        /** @var $stpe SearchTermParseEvent */
+        $stpe = send_event(new SearchTermParseEvent($stpen++, null, $terms));
+        if ($stpe->order) {
+            $order = $stpe->order;
+        } elseif (!empty($stpe->querylets)) {
+            foreach ($stpe->querylets as $querylet) {
                 $img_conditions[] = new ImgCondition($querylet, true);
             }
         }
@@ -298,9 +305,12 @@ class Image
                 continue;
             }
 
-            $stpe = send_event(new SearchTermParseEvent($term, $terms));
-            if ($stpe->is_querylet_set()) {
-                foreach ($stpe->get_querylets() as $querylet) {
+            /** @var $stpe SearchTermParseEvent */
+            $stpe = send_event(new SearchTermParseEvent($stpen++, $term, $terms));
+            if ($stpe->order) {
+                $order = $stpe->order;
+            } elseif (!empty($stpe->querylets)) {
+                foreach ($stpe->querylets as $querylet) {
                     $img_conditions[] = new ImgCondition($querylet, $positive);
                 }
             } else {
@@ -310,7 +320,7 @@ class Image
                 }
             }
         }
-        return [$tag_conditions, $img_conditions];
+        return [$tag_conditions, $img_conditions, $order];
     }
 
     /*
@@ -347,8 +357,9 @@ class Image
 			');
         } else {
             $tags[] = 'id'. $gtlt . $this->id;
+            $tags[] = 'order:id_'. strtolower($dir);
             $querylet = Image::build_search_querylet($tags);
-            $querylet->append_sql(' ORDER BY images.id '.$dir.' LIMIT 1');
+            $querylet->append_sql(' LIMIT 1');
             $row = $database->get_row($querylet->sql, $querylet->variables);
         }
 
@@ -385,7 +396,7 @@ class Image
 				SET owner_id=:owner_id
 				WHERE id=:id
 			", ["owner_id"=>$owner->id, "id"=>$this->id]);
-            log_info("core_image", "Owner for Image #{$this->id} set to {$owner->name}");
+            log_info("core_image", "Owner for Post #{$this->id} set to {$owner->name}");
         }
     }
 
@@ -439,17 +450,18 @@ class Image
         $database->execute(
             "UPDATE images SET ".
             "lossless = :lossless, ".
-            "video = :video, audio = :audio,image = :image, ".
+            "video = :video, video_codec = :video_codec, audio = :audio,image = :image, ".
             "height = :height, width = :width, ".
             "length = :length WHERE id = :id",
             [
                 "id" => $this->id,
                 "width" => $this->width ?? 0,
                 "height" => $this->height ?? 0,
-                "lossless" => $database->scoresql_value_prepare($this->lossless),
-                "video" => $database->scoresql_value_prepare($this->video),
-                "image" => $database->scoresql_value_prepare($this->image),
-                "audio" => $database->scoresql_value_prepare($this->audio),
+                "lossless" => $this->lossless,
+                "video" => $this->video,
+                "video_codec" => $this->video_codec,
+                "image" => $this->image,
+                "audio" => $this->audio,
                 "length" => $this->length
             ]
         );
@@ -523,7 +535,7 @@ class Image
         $image_link = $config->get_string($template);
 
         if (!empty($image_link)) {
-            if (!(strpos($image_link, "://") > 0) && !startsWith($image_link, "/")) {
+            if (!str_contains($image_link, "://") && !str_starts_with($image_link, "/")) {
                 $image_link = make_link($image_link);
             }
             $chosen = $image_link;
@@ -546,6 +558,19 @@ class Image
         send_event($plte);
         return $plte->text;
     }
+
+    /**
+     * Get the info for this image, formatted according to the
+     * configured template.
+     */
+    public function get_info(): string
+    {
+        global $config;
+        $plte = new ParseLinkTemplateEvent($config->get_string(ImageConfig::INFO), $this);
+        send_event($plte);
+        return $plte->text;
+    }
+
 
     /**
      * Figure out where the full size image is on disk.
@@ -582,7 +607,7 @@ class Image
     /**
      * Get the image's mime type.
      */
-    public function get_mime(): string
+    public function get_mime(): ?string
     {
         if ($this->mime===MimeType::WEBP&&$this->lossless) {
             return MimeType::WEBP_LOSSLESS;
@@ -624,7 +649,7 @@ class Image
         }
         if ($new_source != $old_source) {
             $database->execute("UPDATE images SET source=:source WHERE id=:id", ["source"=>$new_source, "id"=>$this->id]);
-            log_info("core_image", "Source for Image #{$this->id} set to: $new_source (was $old_source)");
+            log_info("core_image", "Source for Post #{$this->id} set to: $new_source (was $old_source)");
         }
     }
 
@@ -636,16 +661,12 @@ class Image
         return $this->locked;
     }
 
-    public function set_locked(bool $tf): void
+    public function set_locked(bool $locked): void
     {
         global $database;
-        $ln = $tf ? "Y" : "N";
-        $sln = $database->scoreql_to_sql('SCORE_BOOL_'.$ln);
-        $sln = str_replace("'", "", $sln);
-        $sln = str_replace('"', "", $sln);
-        if (bool_escape($sln) !== $this->locked) {
-            $database->execute("UPDATE images SET locked=:yn WHERE id=:id", ["yn"=>$sln, "id"=>$this->id]);
-            log_info("core_image", "Setting Image #{$this->id} lock to: $ln");
+        if ($locked !== $this->locked) {
+            $database->execute("UPDATE images SET locked=:yn WHERE id=:id", ["yn"=>$locked, "id"=>$this->id]);
+            log_info("core_image", "Setting Post #{$this->id} lock to: $locked");
         }
     }
 
@@ -700,7 +721,7 @@ class Image
                 $page->flash("Can't set a tag longer than 255 characters");
                 continue;
             }
-            if (startsWith($tag, "-")) {
+            if (str_starts_with($tag, "-")) {
                 $page->flash("Can't set a tag which starts with a minus");
                 continue;
             }
@@ -762,7 +783,7 @@ class Image
                 );
             }
 
-            log_info("core_image", "Tags for Image #{$this->id} set to: ".Tag::implode($tags));
+            log_info("core_image", "Tags for Post #{$this->id} set to: ".Tag::implode($tags));
             $cache->delete("image-{$this->id}-tags");
         }
     }
@@ -775,7 +796,7 @@ class Image
         global $database;
         $this->delete_tags_from_image();
         $database->execute("DELETE FROM images WHERE id=:id", ["id"=>$this->id]);
-        log_info("core_image", 'Deleted Image #'.$this->id.' ('.$this->hash.')');
+        log_info("core_image", 'Deleted Post #'.$this->id.' ('.$this->hash.')');
 
         unlink($this->get_image_filename());
         unlink($this->get_thumb_filename());
@@ -787,7 +808,7 @@ class Image
      */
     public function remove_image_only(): void
     {
-        log_info("core_image", 'Removed Image File ('.$this->hash.')');
+        log_info("core_image", 'Removed Post File ('.$this->hash.')');
         @unlink($this->get_image_filename());
         @unlink($this->get_thumb_filename());
     }
@@ -813,12 +834,14 @@ class Image
      * #param string[] $terms
      */
     private static function build_search_querylet(
-        array $tags,
-        ?string $order=null,
+        array $terms,
         ?int $limit=null,
         ?int $offset=null
     ): Querylet {
-        list($tag_conditions, $img_conditions) = self::terms_to_conditions($tags);
+        global $config;
+
+        list($tag_conditions, $img_conditions, $order) = self::terms_to_conditions($terms);
+        $order = ($order ?: "images.".$config->get_string(IndexConfig::ORDER));
 
         $positive_tag_count = 0;
         $negative_tag_count = 0;

@@ -61,7 +61,7 @@ abstract class Extension
         return 50;
     }
 
-    public static function determine_enabled_extensions()
+    public static function determine_enabled_extensions(): void
     {
         self::$enabled_extensions = [];
         foreach (array_merge(
@@ -138,6 +138,7 @@ abstract class ExtensionInfo
     public $license;
     public $version;
     public $dependencies = [];
+    public $conflicts = [];
     public $visibility;
     public $description;
     public $documentation;
@@ -193,6 +194,13 @@ abstract class ExtensionInfo
         if (!empty($this->db_support) && !in_array($database->get_driver_name(), $this->db_support)) {
             $this->support_info .= "Database not supported. ";
         }
+        if (!empty($this->conflicts)) {
+            $intersects = array_intersect($this->conflicts, Extension::get_enabled_extensions());
+            if (!empty($intersects)) {
+                $this->support_info .= "Conflicts with other extension(s): " . join(", ", $intersects);
+            }
+        }
+
         // Additional checks here as needed
 
         $this->supported = empty($this->support_info);
@@ -235,7 +243,7 @@ abstract class ExtensionInfo
 
     public static function load_all_extension_info()
     {
-        foreach (getSubclassesOf("ExtensionInfo") as $class) {
+        foreach (get_subclasses_of("ExtensionInfo") as $class) {
             $extension_info = new $class();
             if (array_key_exists($extension_info->key, self::$all_info_by_key)) {
                 throw new ScoreException("Extension Info $class with key $extension_info->key has already been loaded");
@@ -305,17 +313,17 @@ abstract class DataHandlerExtension extends Extension
                 $existing = Image::by_id($event->replace_id);
 
                 if (is_null($existing)) {
-                    throw new UploadException("Image to replace does not exist!");
+                    throw new UploadException("Post to replace does not exist!");
                 }
                 if ($existing->hash === $event->metadata['hash']) {
-                    throw new UploadException("The uploaded image is the same as the one to replace.");
+                    throw new UploadException("The uploaded post is the same as the one to replace.");
                 }
 
                 // even more hax..
                 $event->metadata['tags'] = $existing->get_tag_list();
                 $image = $this->create_image_from_data(warehouse_path(Image::IMAGE_DIR, $event->metadata['hash']), $event->metadata);
                 if (is_null($image)) {
-                    throw new UploadException("Data handler failed to create image object from data");
+                    throw new UploadException("Data handler failed to create post object from data");
                 }
                 if (empty($image->get_mime())) {
                     throw new UploadException("Unable to determine MIME for ". $event->tmpname);
@@ -331,7 +339,7 @@ abstract class DataHandlerExtension extends Extension
             } else {
                 $image = $this->create_image_from_data(warehouse_path(Image::IMAGE_DIR, $event->hash), $event->metadata);
                 if (is_null($image)) {
-                    throw new UploadException("Data handler failed to create image object from data");
+                    throw new UploadException("Data handler failed to create post object from data");
                 }
                 if (empty($image->get_mime())) {
                     throw new UploadException("Unable to determine MIME for ". $event->tmpname);
@@ -401,8 +409,6 @@ abstract class DataHandlerExtension extends Extension
 
     protected function create_image_from_data(string $filename, array $metadata): Image
     {
-        global $config;
-
         $image = new Image();
 
         $image->filesize = $metadata['size'];
@@ -433,7 +439,7 @@ abstract class DataHandlerExtension extends Extension
     public static function get_all_supported_mimes(): array
     {
         $arr = [];
-        foreach (getSubclassesOf("DataHandlerExtension") as $handler) {
+        foreach (get_subclasses_of("DataHandlerExtension") as $handler) {
             $handler = (new $handler());
             $arr = array_merge($arr, $handler->SUPPORTED_MIME);
         }

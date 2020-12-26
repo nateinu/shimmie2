@@ -1,14 +1,8 @@
 <?php declare(strict_types=1);
-use function MicroHTML\UL;
 use function MicroHTML\LI;
 use function MicroHTML\A;
 use function MicroHTML\INPUT;
-use function MicroHTML\FORM;
-use function MicroHTML\DIV;
 use function MicroHTML\LABEL;
-use function MicroHTML\P;
-use function MicroHTML\B;
-use function MicroHTML\SPAN;
 use function MicroHTML\rawHTML;
 
 class SourceHistoryTheme extends Themelet
@@ -19,7 +13,7 @@ class SourceHistoryTheme extends Themelet
     {
         $history_html = $this->history_list($history, true);
 
-        $page->set_title('Image '.$image_id.' Source History');
+        $page->set_title('Post '.$image_id.' Source History');
         $page->set_heading('Source History: '.$image_id);
         $page->add_block(new NavBlock());
         $page->add_block(new Block("Source History", $history_html, "main", 10));
@@ -112,7 +106,7 @@ class SourceHistoryTheme extends Themelet
         $name = $fields['name'];
         $date_set = rawHTML(autodate($fields['date_set']));
         $ip = $user->can(Permissions::VIEW_IP) ?
-            rawHTML(" " . show_ip($fields['user_ip'], "Sourcing Image #$image_id as '$current_source'"))
+            rawHTML(" " . show_ip($fields['user_ip'], "Sourcing >>$image_id as '$current_source'"))
             : null;
         $setter = A(["href"=>make_link("user/" . url_escape($name))], $name);
 

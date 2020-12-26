@@ -193,13 +193,13 @@ class BulkActions extends Extension
                 if (is_iterable($items)) {
                     send_event($bae);
                 }
+
+                if ($bae->redirect) {
+                    $page->set_mode(PageMode::REDIRECT);
+                    $page->set_redirect(referer_or(make_link()));
+                }
             } catch (BulkActionException $e) {
                 log_error(BulkActionsInfo::KEY, $e->getMessage(), $e->getMessage());
-            }
-
-            if ($bae->redirect) {
-                $page->set_mode(PageMode::REDIRECT);
-                $page->set_redirect(referer_or(make_link()));
             }
         }
     }
@@ -255,7 +255,7 @@ class BulkActions extends Extension
         $pos_tag_array = [];
         $neg_tag_array = [];
         foreach ($tags as $new_tag) {
-            if (strpos($new_tag, '-') === 0) {
+            if (str_starts_with($new_tag, '-')) {
                 $neg_tag_array[] = substr($new_tag, 1);
             } else {
                 $pos_tag_array[] = $new_tag;

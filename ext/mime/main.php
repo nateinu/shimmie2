@@ -26,7 +26,7 @@ class MimeSystem extends Extension
         // adjustment needs to be made to the mime types.
 
         if ($this->get_version(self::VERSION) < 1) {
-            if ($database->transaction) {
+            if ($database->is_transaction_open()) {
                 // Each of these commands could hit a lot of data, combining
                 // them into one big transaction would not be a good idea.
                 $database->commit();
@@ -45,9 +45,7 @@ class MimeSystem extends Extension
                 $normalized_extension = FileExtension::get_for_mime($mime);
 
                 $database->execute(
-                    $database->scoreql_to_sql(
-                        "UPDATE images SET mime = :mime, ext = :new_ext WHERE ext = :ext"
-                    ),
+                    "UPDATE images SET mime = :mime, ext = :new_ext WHERE ext = :ext AND (mime IS NULL OR mime != :mime OR ext != :new_ext)",
                     ["mime" => $mime, "new_ext" => $normalized_extension, "ext" => $ext]
                 );
             }

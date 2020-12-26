@@ -38,6 +38,17 @@ class SourceSetEvent extends Event
 }
 
 
+class TagSetException extends SCoreException
+{
+    public $redirect;
+
+    public function __construct(string $msg, ?string $redirect = null)
+    {
+        parent::__construct($msg, null);
+        $this->redirect = $redirect;
+    }
+}
+
 class TagSetEvent extends Event
 {
     /** @var Image */
@@ -57,7 +68,7 @@ class TagSetEvent extends Event
         $this->metatags = [];
 
         foreach ($tags as $tag) {
-            if ((strpos($tag, ':') === false) && (strpos($tag, '=') === false)) {
+            if ((!str_contains($tag, ':')) && (!str_contains($tag, '='))) {
                 //Tag doesn't contain : or =, meaning it can't possibly be a metatag.
                 //This should help speed wise, as it avoids running every single tag through a bunch of preg_match instead.
                 array_push($this->tags, $tag);
@@ -162,7 +173,7 @@ class TagEdit extends Extension
 
     public function onImageInfoSet(ImageInfoSetEvent $event)
     {
-        global $user;
+        global $page, $user;
         if ($user->can(Permissions::EDIT_IMAGE_OWNER) && isset($_POST['tag_edit__owner'])) {
             $owner = User::by_name($_POST['tag_edit__owner']);
             if ($owner instanceof User) {
@@ -172,7 +183,15 @@ class TagEdit extends Extension
             }
         }
         if ($user->can(Permissions::EDIT_IMAGE_TAG) && isset($_POST['tag_edit__tags'])) {
-            send_event(new TagSetEvent($event->image, Tag::explode($_POST['tag_edit__tags'])));
+            try {
+                send_event(new TagSetEvent($event->image, Tag::explode($_POST['tag_edit__tags'])));
+            } catch (TagSetException $e) {
+                if ($e->redirect) {
+                    $page->flash("{$e->getMessage()}, please see {$e->redirect}");
+                } else {
+                    $page->flash($e->getMessage());
+                }
+            }
         }
         if ($user->can(Permissions::EDIT_IMAGE_SOURCE) && isset($_POST['tag_edit__source'])) {
             if (isset($_POST['tag_edit__tags']) ? !preg_match('/source[=|:]/', $_POST["tag_edit__tags"]) : true) {

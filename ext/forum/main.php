@@ -18,10 +18,10 @@ class Forum extends Extension
 
         // shortcut to latest
 
-        if ($config->get_int("forum_version") < 1) {
+        if ($this->get_version("forum_version") < 1) {
             $database->create_table("forum_threads", "
 					id SCORE_AIPK,
-					sticky SCORE_BOOL NOT NULL DEFAULT SCORE_BOOL_N,
+					sticky BOOLEAN NOT NULL DEFAULT FALSE,
 					title VARCHAR(255) NOT NULL,
 					user_id INTEGER NOT NULL,
 					date TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -41,19 +41,22 @@ class Forum extends Extension
 					");
             $database->execute("CREATE INDEX forum_posts_date_idx ON forum_posts(date)", []);
 
-            $config->set_int("forum_version", 2);
             $config->set_int("forumTitleSubString", 25);
             $config->set_int("forumThreadsPerPage", 15);
             $config->set_int("forumPostsPerPage", 15);
 
             $config->set_int("forumMaxCharsPerPost", 512);
 
-            log_info("forum", "extension installed");
+            $this->set_version("forum_version", 3);
         }
-        if ($config->get_int("forum_version") < 2) {
+        if ($this->get_version("forum_version") < 2) {
             $database->execute("ALTER TABLE forum_threads ADD FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT");
             $database->execute("ALTER TABLE forum_posts ADD FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT");
-            $config->set_int("forum_version", 2);
+            $this->set_version("forum_version", 2);
+        }
+        if ($this->get_version("forum_version") < 3) {
+            $database->standardise_boolean("forum_threads", "sticky");
+            $this->set_version("forum_version", 3);
         }
     }
 
@@ -84,6 +87,10 @@ class Forum extends Extension
         $event->add_stats("Forum posts: $posts_count, $posts_rate per day");
     }
 
+    public function onPageNavBuilding(PageNavBuildingEvent $event)
+    {
+        $event->add_nav_link("forum", new Link('forum/index'), "Forum");
+    }
 
     public function onPageRequest(PageRequestEvent $event)
     {
@@ -302,11 +309,7 @@ class Forum extends Extension
     private function save_new_thread(User $user)
     {
         $title = html_escape($_POST["title"]);
-        $sticky = !empty($_POST["sticky"]) ? html_escape($_POST["sticky"]) : "N";
-
-        if ($sticky == "") {
-            $sticky = "N";
-        }
+        $sticky = !empty($_POST["sticky"]);
 
         global $database;
         $database->execute(

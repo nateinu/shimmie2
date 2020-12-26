@@ -20,13 +20,6 @@ use function MicroHTML\TD;
 const DATA_DIR = "data";
 
 
-function mtimefile(string $file): string
-{
-    $data_href = get_base_href();
-    $mtime = filemtime($file);
-    return "$data_href/$file?$mtime";
-}
-
 function get_theme(): string
 {
     global $config;
@@ -46,18 +39,18 @@ function contact_link(): ?string
     }
 
     if (
-        startsWith($text, "http:") ||
-        startsWith($text, "https:") ||
-        startsWith($text, "mailto:")
+        str_starts_with($text, "http:") ||
+        str_starts_with($text, "https:") ||
+        str_starts_with($text, "mailto:")
     ) {
         return $text;
     }
 
-    if (strpos($text, "@")) {
+    if (str_contains($text, "@")) {
         return "mailto:$text";
     }
 
-    if (strpos($text, "/")) {
+    if (str_contains($text, "/")) {
         return "http://$text";
     }
 
@@ -259,7 +252,7 @@ function load_balance_url(string $tmpl, string $hash, int $n=0): string
     return $tmpl;
 }
 
-function transload(string $url, string $mfile): ?array
+function fetch_url(string $url, string $mfile): ?array
 {
     global $config;
 
@@ -276,8 +269,7 @@ function transload(string $url, string $mfile): ?array
 
         $response = curl_exec($ch);
         if ($response === false) {
-            log_warning("core-util", "Failed to transload $url");
-            throw new SCoreException("Failed to fetch $url");
+            return null;
         }
 
         $header_size = curl_getinfo($ch, CURLINFO_HEADER_SIZE);
@@ -348,7 +340,7 @@ function path_to_tags(string $path): string
                 // which is for inheriting to tags on the subfolder
                 $category_to_inherit = $tag;
             } else {
-                if ($category!=""&&strpos($tag, ":") === false) {
+                if ($category!="" && !str_contains($tag, ":")) {
                     // This indicates that category inheritance is active,
                     // and we've encountered a tag that does not specify a category.
                     // So we attach the inherited category to the tag.

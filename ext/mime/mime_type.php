@@ -38,6 +38,7 @@ class MimeType
     public const PDF = 'application/pdf';
     public const PHP = 'text/x-php';
     public const PNG = 'image/png';
+    public const PPM = 'image/x-portable-pixmap';
     public const PSD = 'image/vnd.adobe.photoshop';
     public const QUICKTIME = 'video/quicktime';
     public const RSS = 'application/rss+xml';
@@ -131,15 +132,17 @@ class MimeType
         if (($fh = @fopen($image_filename, 'rb'))) {
             try {
                 //check if gif is animated (via https://www.php.net/manual/en/function.imagecreatefromgif.php#104473)
+                $chunk = false;
+
                 while (!feof($fh) && $is_anim_gif < 2) {
-                    $chunk = fread($fh, 1024 * 100);
-                    $is_anim_gif += preg_match_all('#\x00\x21\xF9\x04.{4}\x00[\x2C\x21]#s', $chunk, $matches);
+                    $chunk =  ($chunk ? substr($chunk, -20) : "") . fread($fh, 1024 * 100); //read 100kb at a time
+                    $is_anim_gif += preg_match_all('#\x00\x21\xF9\x04.{4}\x00(\x2C|\x21)#s', $chunk, $matches);
                 }
             } finally {
                 @fclose($fh);
             }
         }
-        return ($is_anim_gif == 0);
+        return ($is_anim_gif >=2);
     }
 
 
@@ -216,8 +219,6 @@ class MimeType
 
         $output = self::OCTET_STREAM;
 
-        $type = false;
-
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         try {
             $type = finfo_file($finfo, $file);
@@ -239,6 +240,9 @@ class MimeType
                 switch ($ext) {
                     case FileExtension::ANI:
                         $output = MimeType::ANI;
+                        break;
+                    case FileExtension::PPM:
+                        $output = MimeType::PPM;
                         break;
 // TODO: There is no uniquely defined Mime type for the cursor format. Need to figure this out.
 //                    case FileExtension::CUR:

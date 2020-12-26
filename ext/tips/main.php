@@ -35,20 +35,24 @@ class Tips extends Extension
 
         if ($this->get_version("ext_tips_version") < 1) {
             $database->create_table("tips", "
-					id SCORE_AIPK,
-					enable SCORE_BOOL NOT NULL DEFAULT SCORE_BOOL_N,
-					image TEXT NOT NULL,
-					text TEXT NOT NULL,
-					");
+                id SCORE_AIPK,
+                enable BOOLEAN NOT NULL DEFAULT FALSE,
+                image TEXT NOT NULL,
+                text TEXT NOT NULL,
+            ");
 
             $database->execute(
                 "
 					INSERT INTO tips (enable, image, text)
 					VALUES (:enable, :image, :text)",
-                ["enable"=>"Y", "image"=>"coins.png", "text"=>"Do you like this extension? Please support us for developing new ones. <a href=\"https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8235933\" target=\"_blank\">Donate through paypal</a>."]
+                ["enable"=>true, "image"=>"coins.png", "text"=>"Do you like this extension? Please support us for developing new ones. <a href=\"https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8235933\" target=\"_blank\">Donate through paypal</a>."]
             );
 
-            $this->set_version("ext_tips_version", 1);
+            $this->set_version("ext_tips_version", 2);
+        }
+        if ($this->get_version("ext_tips_version") < 2) {
+            $database->standardise_boolean("tips", "enable");
+            $this->set_version("ext_tips_version", 2);
         }
     }
 
@@ -132,7 +136,7 @@ class Tips extends Extension
             "
 				INSERT INTO tips (enable, image, text)
 				VALUES (:enable, :image, :text)",
-            ["enable"=>$event->enable ? "Y" : "N", "image"=>$event->image, "text"=>$event->text]
+            ["enable"=>$event->enable, "image"=>$event->image, "text"=>$event->text]
         );
     }
 
@@ -143,11 +147,13 @@ class Tips extends Extension
         $data_href = get_base_href();
         $url = $data_href."/ext/tips/images/";
 
-        $tip = $database->get_row("SELECT * ".
-                "FROM tips ".
-                "WHERE enable = 'Y' ".
-                "ORDER BY RAND() ".
-                "LIMIT 1");
+        $tip = $database->get_row("
+            SELECT *
+            FROM tips
+            WHERE enable = :true
+            ORDER BY RAND()
+            LIMIT 1
+        ", ["true"=>true]);
 
         if ($tip) {
             $this->theme->showTip($url, $tip);
@@ -172,11 +178,7 @@ class Tips extends Extension
 
         $tip = $database->get_row("SELECT * FROM tips WHERE id = :id ", ["id"=>$tipID]);
 
-        if (bool_escape($tip['enable'])) {
-            $enable = "N";
-        } else {
-            $enable = "Y";
-        }
+        $enable = bool_escape($tip['enable']);
 
         $database->execute("UPDATE tips SET enable = :enable WHERE id = :id", ["enable"=>$enable, "id"=>$tipID]);
     }

@@ -323,10 +323,10 @@ class DatabaseConfig extends BaseConfig
                 $params[] = ":sub_value";
             }
 
-            $this->database->Execute($query, $args);
+            $this->database->execute($query, $args);
 
             $args["value"] =$this->values[$name];
-            $this->database->Execute(
+            $this->database->execute(
                 "INSERT INTO {$this->table_name} (".join(",", $cols).") VALUES (".join(",", $params).")",
                 $args
             );
@@ -334,5 +334,6 @@ class DatabaseConfig extends BaseConfig
         // rather than deleting and having some other request(s) do a thundering
         // herd of race-conditioned updates, just save the updated version once here
         $cache->set("config", $this->values);
+        $this->database->notify("config");
     }
 }

@@ -55,6 +55,7 @@ abstract class MediaEngine
             MimeType::GIF,
             MimeType::JPEG,
             MimeType::PNG,
+            MimeType::PPM,
             MimeType::PSD,
             MimeType::TIFF,
             MimeType::WEBP,
@@ -83,6 +84,7 @@ abstract class MediaEngine
         MediaEngine::IMAGICK => [
             Media::RESIZE_TYPE_FIT,
             Media::RESIZE_TYPE_FIT_BLUR,
+            Media::RESIZE_TYPE_FIT_BLUR_PORTRAIT,
             Media::RESIZE_TYPE_FILL,
             Media::RESIZE_TYPE_STRETCH,
         ],

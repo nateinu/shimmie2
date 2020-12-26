@@ -3,18 +3,12 @@ abstract class SCORE
 {
     const AIPK      = "SCORE_AIPK";
     const INET      = "SCORE_INET";
-    const BOOL_Y    = "SCORE_BOOL_Y";
-    const BOOL_N    = "SCORE_BOOL_N";
-    const BOOL      = "SCORE_BOOL";
 }
 
 abstract class DBEngine
 {
     /** @var null|string */
     public $name = null;
-
-    public $BOOL_Y = null;
-    public $BOOL_N = null;
 
     public function init(PDO $db)
     {
@@ -33,15 +27,14 @@ abstract class DBEngine
     abstract public function set_timeout(PDO $db, int $time);
 
     abstract public function get_version(PDO $db): string;
+
+    abstract public function notify(PDO $db, string $channel, ?string $data=null): void;
 }
 
 class MySQL extends DBEngine
 {
     /** @var string */
     public $name = DatabaseDriver::MYSQL;
-
-    public $BOOL_Y = 'Y';
-    public $BOOL_N = 'N';
 
     public function init(PDO $db)
     {
@@ -52,9 +45,6 @@ class MySQL extends DBEngine
     {
         $data = str_replace(SCORE::AIPK, "INTEGER PRIMARY KEY auto_increment", $data);
         $data = str_replace(SCORE::INET, "VARCHAR(45)", $data);
-        $data = str_replace(SCORE::BOOL_Y, "'$this->BOOL_Y'", $data);
-        $data = str_replace(SCORE::BOOL_N, "'$this->BOOL_N'", $data);
-        $data = str_replace(SCORE::BOOL, "ENUM('Y', 'N')", $data);
         return $data;
     }
 
@@ -71,6 +61,10 @@ class MySQL extends DBEngine
         // $db->exec("SET SESSION MAX_EXECUTION_TIME=".$time.";");
     }
 
+    public function notify(PDO $db, string $channel, ?string $data=null): void
+    {
+    }
+
     public function get_version(PDO $db): string
     {
         return $db->query('select version()')->fetch()[0];
@@ -81,9 +75,6 @@ class PostgreSQL extends DBEngine
 {
     /** @var string */
     public $name = DatabaseDriver::PGSQL;
-
-    public $BOOL_Y = "true";
-    public $BOOL_N = "false";
 
     public function init(PDO $db)
     {
@@ -101,9 +92,6 @@ class PostgreSQL extends DBEngine
     {
         $data = str_replace(SCORE::AIPK, "INTEGER NOT NULL PRIMARY KEY GENERATED ALWAYS AS IDENTITY", $data);
         $data = str_replace(SCORE::INET, "INET", $data);
-        $data = str_replace(SCORE::BOOL_Y, "true", $data);
-        $data = str_replace(SCORE::BOOL_N, "false", $data);
-        $data = str_replace(SCORE::BOOL, "BOOL", $data);
         return $data;
     }
 
@@ -116,6 +104,15 @@ class PostgreSQL extends DBEngine
     public function set_timeout(PDO $db, int $time): void
     {
         $db->exec("SET statement_timeout TO ".$time.";");
+    }
+
+    public function notify(PDO $db, string $channel, ?string $data=null): void
+    {
+        if ($data) {
+            $db->exec("NOTIFY $channel, '$data';");
+        } else {
+            $db->exec("NOTIFY $channel;");
+        }
     }
 
     public function get_version(PDO $db): string
@@ -175,10 +172,6 @@ class SQLite extends DBEngine
     /** @var string  */
     public $name = DatabaseDriver::SQLITE;
 
-    public $BOOL_Y = 'Y';
-    public $BOOL_N = 'N';
-
-
     public function init(PDO $db)
     {
         ini_set('sqlite.assoc_case', '0');
@@ -199,9 +192,6 @@ class SQLite extends DBEngine
     {
         $data = str_replace(SCORE::AIPK, "INTEGER PRIMARY KEY", $data);
         $data = str_replace(SCORE::INET, "VARCHAR(45)", $data);
-        $data = str_replace(SCORE::BOOL_Y, "'$this->BOOL_Y'", $data);
-        $data = str_replace(SCORE::BOOL_N, "'$this->BOOL_N'", $data);
-        $data = str_replace(SCORE::BOOL, "CHAR(1)", $data);
         return $data;
     }
 
@@ -227,6 +217,10 @@ class SQLite extends DBEngine
     public function set_timeout(PDO $db, int $time): void
     {
         // There doesn't seem to be such a thing for SQLite, so it does nothing
+    }
+
+    public function notify(PDO $db, string $channel, ?string $data=null): void
+    {
     }
 
     public function get_version(PDO $db): string

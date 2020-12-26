@@ -80,7 +80,7 @@ class WikiPage
             $this->date = $row['date'];
             $this->title = $row['title'];
             $this->revision = (int)$row['revision'];
-            $this->locked = ($row['locked'] == 'Y');
+            $this->locked = bool_escape($row['locked']);
             $this->body = $row['body'];
         }
     }
@@ -133,17 +133,21 @@ class Wiki extends Extension
 				date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 				title VARCHAR(255) NOT NULL,
 				revision INTEGER NOT NULL DEFAULT 1,
-				locked SCORE_BOOL NOT NULL DEFAULT SCORE_BOOL_N,
+				locked BOOLEAN NOT NULL DEFAULT FALSE,
 				body TEXT NOT NULL,
 				UNIQUE (title, revision),
 				FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE RESTRICT
 			");
-            $this->set_version("ext_wiki_version", 2);
+            $this->set_version("ext_wiki_version", 3);
         }
         if ($this->get_version("ext_wiki_version") < 2) {
-            $database->Execute("ALTER TABLE wiki_pages ADD COLUMN
+            $database->execute("ALTER TABLE wiki_pages ADD COLUMN
 				locked ENUM('Y', 'N') DEFAULT 'N' NOT NULL AFTER REVISION");
             $this->set_version("ext_wiki_version", 2);
+        }
+        if ($this->get_version("ext_wiki_version") < 3) {
+            $database->standardise_boolean("wiki_pages", "locked", true);
+            $this->set_version("ext_wiki_version", 3);
         }
     }
 
@@ -228,12 +232,12 @@ class Wiki extends Extension
         global $database;
         $wpage = $event->wikipage;
         try {
-            $database->Execute(
+            $database->execute(
                 "
 				INSERT INTO wiki_pages(owner_id, owner_ip, date, title, revision, locked, body)
 				VALUES (:owner_id, :owner_ip, now(), :title, :revision, :locked, :body)",
                 ["owner_id"=>$event->user->id, "owner_ip"=>$_SERVER['REMOTE_ADDR'],
-                "title"=>$wpage->title, "revision"=>$wpage->revision, "locked"=>$wpage->locked?'Y':'N', "body"=>$wpage->body]
+                "title"=>$wpage->title, "revision"=>$wpage->revision, "locked"=>$wpage->locked, "body"=>$wpage->body]
             );
         } catch (Exception $e) {
             throw new WikiUpdateException("Somebody else edited that page at the same time :-(");
@@ -243,7 +247,7 @@ class Wiki extends Extension
     public function onWikiDeleteRevision(WikiDeleteRevisionEvent $event)
     {
         global $database;
-        $database->Execute(
+        $database->execute(
             "DELETE FROM wiki_pages WHERE title=:title AND revision=:rev",
             ["title"=>$event->title, "rev"=>$event->revision]
         );
@@ -252,7 +256,7 @@ class Wiki extends Extension
     public function onWikiDeletePage(WikiDeletePageEvent $event)
     {
         global $database;
-        $database->Execute(
+        $database->execute(
             "DELETE FROM wiki_pages WHERE title=:title",
             ["title" => $event->title]
         );

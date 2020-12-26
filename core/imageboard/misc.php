@@ -33,11 +33,6 @@ function add_dir(string $base): array
 
 /**
  * Sends a DataUploadEvent for a file.
- *
- * @param string $tmpname
- * @param string $filename
- * @param string $tags
- * @throws UploadException
  */
 function add_image(string $tmpname, string $filename, string $tags): int
 {
@@ -75,7 +70,12 @@ function get_thumbnail_size(int $orig_width, int $orig_height, bool $use_dpi_sca
 
     $fit = $config->get_string(ImageConfig::THUMB_FIT);
 
-    if (in_array($fit, [Media::RESIZE_TYPE_FILL, Media::RESIZE_TYPE_STRETCH, Media::RESIZE_TYPE_FIT_BLUR])) {
+    if (in_array($fit, [
+            Media::RESIZE_TYPE_FILL,
+            Media::RESIZE_TYPE_STRETCH,
+            Media::RESIZE_TYPE_FIT_BLUR,
+            Media::RESIZE_TYPE_FIT_BLUR_PORTRAIT
+        ])) {
         return [$config->get_int(ImageConfig::THUMB_WIDTH), $config->get_int(ImageConfig::THUMB_HEIGHT)];
     }
 
@@ -181,4 +181,28 @@ function create_scaled_image(string $inname, string $outname, array $tsize, stri
         true,
         true
     ));
+}
+
+function redirect_to_next_image(Image $image): void
+{
+    global $page;
+
+    if (isset($_GET['search'])) {
+        $search_terms = Tag::explode(Tag::decaret($_GET['search']));
+        $query = "search=" . url_escape($_GET['search']);
+    } else {
+        $search_terms = [];
+        $query = null;
+    }
+
+    $target_image = $image->get_next($search_terms);
+
+    if ($target_image == null) {
+        $redirect_target = referer_or(make_link("post/list"), ['post/view']);
+    } else {
+        $redirect_target = make_link("post/view/{$target_image->id}", null, $query);
+    }
+
+    $page->set_mode(PageMode::REDIRECT);
+    $page->set_redirect($redirect_target);
 }

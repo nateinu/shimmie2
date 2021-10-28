@@ -2,7 +2,7 @@
 
 class PixelFileHandler extends DataHandlerExtension
 {
-    protected $SUPPORTED_MIME = [MimeType::JPEG, MimeType::GIF, MimeType::PNG, MimeType::WEBP];
+    protected array $SUPPORTED_MIME = [MimeType::JPEG, MimeType::GIF, MimeType::PNG, MimeType::WEBP];
 
     protected function media_check_properties(MediaCheckPropertiesEvent $event): void
     {
@@ -35,10 +35,10 @@ class PixelFileHandler extends DataHandlerExtension
         return $info && in_array($info[2], $valid);
     }
 
-    protected function create_thumb(string $hash, string $type): bool
+    protected function create_thumb(string $hash, string $mime): bool
     {
         try {
-            create_image_thumb($hash, $type);
+            create_image_thumb($hash, $mime);
             return true;
         } catch (InsufficientMemoryException $e) {
             $tsize = get_thumbnail_max_size_scaled();
@@ -57,15 +57,17 @@ class PixelFileHandler extends DataHandlerExtension
 
     public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
     {
-        $event->add_part("
-			<form>
-				<select class='shm-zoomer'>
-					<option value='full'>Full Size</option>
-					<option value='width'>Fit Width</option>
-					<option value='height'>Fit Height</option>
-					<option value='both'>Fit Both</option>
-				</select>
-			</form>
-		", 20);
+        if ($event->context == "view") {
+            $event->add_part("
+                <form>
+                    <select class='shm-zoomer'>
+                        <option value='full'>Full Size</option>
+                        <option value='width'>Fit Width</option>
+                        <option value='height'>Fit Height</option>
+                        <option value='both'>Fit Both</option>
+                    </select>
+                </form>
+            ", 20);
+        }
     }
 }

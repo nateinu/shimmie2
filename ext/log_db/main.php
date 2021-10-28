@@ -8,6 +8,7 @@ use function MicroHTML\BR;
 use function MicroHTML\SELECT;
 use function MicroHTML\OPTION;
 use function MicroHTML\rawHTML;
+use MicroHTML\HTMLElement;
 use MicroCRUD\ActionColumn;
 use MicroCRUD\Column;
 use MicroCRUD\DateTimeColumn;
@@ -72,7 +73,7 @@ class ActorColumn extends Column
         );
     }
 
-    public function modify_input_for_read($input)
+    public function modify_input_for_read($input): array
     {
         list($un, $ip) = $input;
         if (empty($un)) {
@@ -84,7 +85,7 @@ class ActorColumn extends Column
         return [$un, $ip];
     }
 
-    public function display($row)
+    public function display($row): HTMLElement
     {
         $ret = emptyHTML();
         if ($row['username'] != "Anonymous") {
@@ -206,7 +207,7 @@ class LogTable extends Table
 class LogDatabase extends Extension
 {
     /** @var LogDatabaseTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function onInitExt(InitExtEvent $event)
     {
@@ -235,7 +236,7 @@ class LogDatabase extends Extension
 
     public function onSetupBuilding(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Logging (Database)");
+        $sb = $event->panel->create_new_block("Logging (Database)");
         $sb->add_choice_option("log_db_priority", [
             LOGGING_LEVEL_NAMES[SCORE_LOG_DEBUG] => SCORE_LOG_DEBUG,
             LOGGING_LEVEL_NAMES[SCORE_LOG_INFO] => SCORE_LOG_INFO,
@@ -243,7 +244,6 @@ class LogDatabase extends Extension
             LOGGING_LEVEL_NAMES[SCORE_LOG_ERROR] => SCORE_LOG_ERROR,
             LOGGING_LEVEL_NAMES[SCORE_LOG_CRITICAL] => SCORE_LOG_CRITICAL,
         ], "Debug Level: ");
-        $event->panel->add_block($sb);
     }
 
     public function onPageRequest(PageRequestEvent $event)

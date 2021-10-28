@@ -8,7 +8,7 @@ require_once "config.php";
 class ImageIO extends Extension
 {
     /** @var ImageIOTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     const COLLISION_OPTIONS = [
         'Error'=>ImageConfig::COLLISION_ERROR,
@@ -155,7 +155,9 @@ class ImageIO extends Extension
                         send_event(new SourceSetEvent($existing, $_GET['source']));
                     }
                     $event->merged = true;
-                    $event->image = Image::by_id($existing->id);
+                    $im = Image::by_id($existing->id);
+                    assert(!is_null($image));
+                    $event->image = $im;
                     return;
                 } else {
                     $error = "Post <a href='".make_link("post/view/{$existing->id}")."'>{$existing->id}</a> ".
@@ -256,7 +258,7 @@ class ImageIO extends Extension
     {
         global $config;
 
-        $sb = new SetupBlock("Post Options");
+        $sb = $event->panel->create_new_block("Post Options");
         $sb->start_table();
         $sb->position = 30;
         // advanced only
@@ -270,9 +272,8 @@ class ImageIO extends Extension
             $sb->add_bool_option(ImageConfig::SHOW_META, "Show metadata", true);
         }
         $sb->end_table();
-        $event->panel->add_block($sb);
 
-        $sb = new SetupBlock("Thumbnailing");
+        $sb = $event->panel->create_new_block("Thumbnailing");
         $sb->start_table();
         $sb->add_choice_option(ImageConfig::THUMB_ENGINE, self::THUMBNAIL_ENGINES, "Engine", true);
         $sb->add_choice_option(ImageConfig::THUMB_MIME, self::THUMBNAIL_TYPES, "Filetype", true);
@@ -294,8 +295,6 @@ class ImageIO extends Extension
         }
 
         $sb->end_table();
-
-        $event->panel->add_block($sb);
     }
 
     public function onParseLinkTemplate(ParseLinkTemplateEvent $event)

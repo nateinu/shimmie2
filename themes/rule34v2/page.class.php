@@ -80,7 +80,7 @@ $header_html
 			xhr.open("GET", "/stat.txt?" + new URLSearchParams(ob).toString(), true);
 			xhr.send();
 		}
-		setTimeout(function(){
+		function logTimes() {
 			var t = window.performance.timing;
 			stat({
 				"v": 1,
@@ -93,7 +93,8 @@ $header_html
 				"domInteractive": t.domInteractive - t.fetchStart,
 				"domComplete": t.domComplete - t.fetchStart,
 			})
-		}, 3000);
+		}
+		// setTimeout(logTimes, 3000);
 		</script>
 	</head>
 
@@ -131,11 +132,6 @@ EOD;
     <a href="http://rule34.paheal.net/wiki/Privacy%20policy">Privacy policy</a>
     !!!
     <a href="http://rule34.paheal.net/wiki/2257">18 U.S.C. &sect;2257</a><br />
-</span>
-<hr />
-<span style="font-size: 12px;">
-    BTC: <b>193gutWtgirF7js14ivcXfnfQgXv9n5BZo</b>
-    ETH: <b>0x68B88a00e69Bde88E9db1b9fC10b8011226e26aF</b>
 </span>
 <hr />
 <br>

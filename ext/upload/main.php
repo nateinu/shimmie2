@@ -7,22 +7,14 @@ require_once "config.php";
  */
 class DataUploadEvent extends Event
 {
-    /** @var string */
-    public $tmpname;
-    /** @var array */
-    public $metadata;
-    /** @var string */
-    public $hash;
-    /** @var string */
-    public $mime = "";
-    /** @var int */
-    public $image_id = -1;
-    /** @var int */
-    public $replace_id = null;
-    /** @var bool */
-    public $handled = false;
-    /** @var bool */
-    public $merged = false;
+    public string $tmpname;
+    public array $metadata;
+    public string $hash;
+    public string $mime = "";
+    public int $image_id = -1;
+    public ?int $replace_id = null;
+    public bool $handled = false;
+    public bool $merged = false;
 
     /**
      * Some data is being uploaded.
@@ -86,10 +78,8 @@ class UploadException extends SCoreException
 class Upload extends Extension
 {
     /** @var UploadTheme */
-    protected $theme;
-
-    /** @var bool */
-    public $is_full;
+    protected ?Themelet $theme;
+    public bool $is_full;
 
     /**
      * Early, so it can stop the DataUploadEvent before any data handlers see it.
@@ -132,7 +122,7 @@ class Upload extends Extension
         $tes["fopen"] = "fopen";
         $tes["WGet"] = "wget";
 
-        $sb = new SetupBlock("Upload");
+        $sb = $event->panel->create_new_block("Upload");
         $sb->position = 10;
         // Output the limits from PHP so the user has an idea of what they can set.
         $sb->add_int_option(UploadConfig::COUNT, "Max uploads: ");
@@ -141,7 +131,6 @@ class Upload extends Extension
         $sb->add_label("<i>PHP Limit = " . ini_get('upload_max_filesize') . "</i>");
         $sb->add_choice_option(UploadConfig::TRANSLOAD_ENGINE, $tes, "<br/>Transload: ");
         $sb->add_bool_option(UploadConfig::TLSOURCE, "<br/>Use transloaded URL as source if none is provided: ");
-        $event->panel->add_block($sb);
     }
 
 
@@ -189,10 +178,12 @@ class Upload extends Extension
 
         if ($event->page_matches("upload/replace")) {
             if (!$user->can(Permissions::REPLACE_IMAGE)) {
-                throw new UploadException("You don't have permission to replace images");
+                $this->theme->display_error(403, "Error", "{$user->name} doesn't have permission to replace images");
+                return;
             }
             if ($this->is_full) {
-                throw new UploadException("Can not replace Post: disk nearly full");
+                $this->theme->display_error(507, "Error", "Can't replace images: disk nearly full");
+                return;
             }
 
             // Try to get the image ID
@@ -227,10 +218,12 @@ class Upload extends Extension
             }
         } elseif ($event->page_matches("upload")) {
             if (!$user->can(Permissions::CREATE_IMAGE)) {
-                throw new UploadException("You don't have permission to replace images");
+                $this->theme->display_error(403, "Error", "{$user->name} doesn't have permission to upload images");
+                return;
             }
             if ($this->is_full) {
-                throw new UploadException("Can not replace Post: disk nearly full");
+                $this->theme->display_error(507, "Error", "Can't upload images: disk nearly full");
+                return;
             }
 
             /* Regular Upload Image */

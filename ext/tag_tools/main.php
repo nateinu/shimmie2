@@ -4,37 +4,7 @@ declare(strict_types=1);
 class TagTools extends Extension
 {
     /** @var TagToolsTheme */
-    protected $theme;
-
-    public function onPageRequest(PageRequestEvent $event)
-    {
-        global $database, $page, $user;
-
-        if ($event->page_matches("admin")) {
-            if (!$user->can(Permissions::MANAGE_ADMINTOOLS)) {
-                $this->theme->display_permission_denied();
-            } else {
-                if ($event->count_args() == 0) {
-                    send_event(new AdminBuildingEvent($page));
-                } else {
-                    $action = $event->get_arg(0);
-                    $aae = new AdminActionEvent($action);
-
-                    if ($user->check_auth_token()) {
-                        log_info("admin", "Util: $action");
-                        set_time_limit(0);
-                        $database->set_timeout(300000);
-                        send_event($aae);
-                    }
-
-                    if ($aae->redirect) {
-                        $page->set_mode(PageMode::REDIRECT);
-                        $page->set_redirect(make_link("admin"));
-                    }
-                }
-            }
-        }
-    }
+    protected ?Themelet $theme;
 
     public function onAdminBuilding(AdminBuildingEvent $event)
     {
@@ -49,7 +19,7 @@ class TagTools extends Extension
         }
     }
 
-    private function set_tag_case()
+    private function set_tag_case(): bool
     {
         global $database;
         $database->execute(
@@ -60,7 +30,7 @@ class TagTools extends Extension
         return true;
     }
 
-    private function lowercase_all_tags()
+    private function lowercase_all_tags(): bool
     {
         global $database;
         $database->execute("UPDATE tags SET tag=lower(tag)");
@@ -68,7 +38,7 @@ class TagTools extends Extension
         return true;
     }
 
-    private function recount_tag_use()
+    private function recount_tag_use(): bool
     {
         global $database;
         $database->execute("

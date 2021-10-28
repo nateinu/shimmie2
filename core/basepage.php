@@ -20,10 +20,8 @@ abstract class PageMode
  */
 class BasePage
 {
-    /** @var string */
-    public $mode = PageMode::PAGE;
-    /** @var string */
-    private $mime;
+    public string $mode = PageMode::PAGE;
+    private string $mime;
 
     /**
      * Set what this page should do; "page", "data", or "redirect".
@@ -52,19 +50,11 @@ class BasePage
 
     // ==============================================
 
-    /** @var string; public only for unit test */
-    public $data = "";
-
-    /** @var string */
-    private $file = null;
-
-    /** @var bool */
-    private $file_delete = false;
-
-    /** @var string */
-    private $filename = null;
-
-    private $disposition = null;
+    public string $data = "";  // public only for unit test
+    private ?string $file = null;
+    private bool $file_delete = false;
+    private ?string $filename = null;
+    private ?string $disposition = null;
 
     /**
      * Set the raw data to be sent.
@@ -91,8 +81,7 @@ class BasePage
 
     // ==============================================
 
-    /** @var string */
-    public $redirect = "";
+    public string $redirect = "";
 
     /**
      * Set the URL to redirect to (remember to use make_link() if linking
@@ -105,32 +94,25 @@ class BasePage
 
     // ==============================================
 
-    /** @var int */
-    public $code = 200;
-
-    /** @var string */
-    public $title = "";
-
-    /** @var string */
-    public $heading = "";
-
-    /** @var string */
-    public $subheading = "";
+    public int $code = 200;
+    public string $title = "";
+    public string $heading = "";
+    public string $subheading = "";
 
     /** @var string[] */
-    public $html_headers = [];
+    public array $html_headers = [];
 
     /** @var string[] */
-    public $http_headers = [];
+    public array $http_headers = [];
 
     /** @var string[][] */
-    public $cookies = [];
+    public array $cookies = [];
 
     /** @var Block[] */
-    public $blocks = [];
+    public array $blocks = [];
 
     /** @var string[] */
-    public $flash = [];
+    public array $flash = [];
 
     /**
      * Set the HTTP status code
@@ -355,8 +337,6 @@ class BasePage
      * Why do this? Two reasons:
      *  1. Reduces the number of files the user's browser needs to download.
      *  2. Allows these cached files to be compressed/minified by the admin.
-     *
-     * TODO: This should really be configurable somehow...
      */
     public function add_auto_html_headers(): void
     {
@@ -381,7 +361,7 @@ class BasePage
         $css_latest = $config_latest;
         $css_files = array_merge(
             zglob("ext/{" . Extension::get_enabled_extensions_as_string() . "}/style.css"),
-            zglob("themes/$theme_name/style.css")
+            zglob("themes/$theme_name/{" . implode(",", $this->get_theme_stylesheets()) . "}")
         );
         foreach ($css_files as $css) {
             $css_latest = max($css_latest, filemtime($css));
@@ -411,7 +391,7 @@ class BasePage
                 "ext/static_files/modernizr-3.3.1.custom.js",
             ],
             zglob("ext/{" . Extension::get_enabled_extensions_as_string() . "}/script.js"),
-            zglob("themes/$theme_name/script.js")
+            zglob("themes/$theme_name/{" . implode(",", $this->get_theme_scripts()) . "}")
         );
         foreach ($js_files as $js) {
             $js_latest = max($js_latest, filemtime($js));
@@ -428,7 +408,25 @@ class BasePage
         $this->add_html_header("<script defer src='$data_href/$js_cache_file' type='text/javascript'></script>", 44);
     }
 
-    protected function get_nav_links()
+
+    /**
+     * @return array A list of stylesheets relative to the theme root.
+     */
+    protected function get_theme_stylesheets(): array
+    {
+        return ["style.css"];
+    }
+
+
+    /**
+     * @return array A list of script files relative to the theme root.
+     */
+    protected function get_theme_scripts(): array
+    {
+        return ["script.js"];
+    }
+
+    protected function get_nav_links(): array
     {
         $pnbe = send_event(new PageNavBuildingEvent());
 
@@ -574,7 +572,7 @@ EOD;
 
 class PageNavBuildingEvent extends Event
 {
-    public $links = [];
+    public array $links = [];
 
     public function add_nav_link(string $name, Link $link, string $desc, ?bool $active = null, int $order = 50)
     {
@@ -584,9 +582,9 @@ class PageNavBuildingEvent extends Event
 
 class PageSubNavBuildingEvent extends Event
 {
-    public $parent;
+    public string $parent;
 
-    public $links = [];
+    public array $links = [];
 
     public function __construct(string $parent)
     {
@@ -602,11 +600,11 @@ class PageSubNavBuildingEvent extends Event
 
 class NavLink
 {
-    public $name;
-    public $link;
-    public $description;
-    public $order;
-    public $active = false;
+    public string $name;
+    public Link $link;
+    public string $description;
+    public int $order;
+    public bool $active = false;
 
     public function __construct(String $name, Link $link, String $description, ?bool $active = null, int $order = 50)
     {
@@ -663,7 +661,7 @@ class NavLink
     }
 }
 
-function sort_nav_links(NavLink $a, NavLink $b)
+function sort_nav_links(NavLink $a, NavLink $b): int
 {
     return $a->order - $b->order;
 }

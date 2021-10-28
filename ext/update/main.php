@@ -3,7 +3,7 @@
 class Update extends Extension
 {
     /** @var UpdateTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function onInitExt(InitExtEvent $event)
     {
@@ -15,9 +15,8 @@ class Update extends Extension
 
     public function onSetupBuilding(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Update");
+        $sb = $event->panel->create_new_block("Update");
         $sb->add_text_option("update_guserrepo", "User/Repo: ");
-        $event->panel->add_block($sb);
     }
 
     public function onAdminBuilding(AdminBuildingEvent $event)

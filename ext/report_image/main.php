@@ -2,8 +2,7 @@
 
 class RemoveReportedImageEvent extends Event
 {
-    /** @var  int */
-    public $id;
+    public int $id;
 
     public function __construct(int $id)
     {
@@ -14,8 +13,7 @@ class RemoveReportedImageEvent extends Event
 
 class AddReportedImageEvent extends Event
 {
-    /** @var ImageReport */
-    public $report;
+    public ImageReport $report;
 
     public function __construct(ImageReport $report)
     {
@@ -26,12 +24,9 @@ class AddReportedImageEvent extends Event
 
 class ImageReport
 {
-    /** @var int  */
-    public $user_id;
-    /** @var int  */
-    public $image_id;
-    /** @var string  */
-    public $reason;
+    public int $user_id;
+    public int $image_id;
+    public string $reason;
 
     public function __construct(int $image_id, int $user_id, string $reason)
     {
@@ -44,7 +39,7 @@ class ImageReport
 class ReportImage extends Extension
 {
     /** @var ReportImageTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function onPageRequest(PageRequestEvent $event)
     {
@@ -157,7 +152,7 @@ class ReportImage extends Extension
 
     public function onSetupBuilding(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Post Reports");
+        $sb = $event->panel->create_new_block("Post Reports");
 
         $opts = [
             "Reporter Only" => "user",
@@ -166,8 +161,6 @@ class ReportImage extends Extension
             "None" => "none",
         ];
         $sb->add_choice_option("report_image_publicity", $opts, "Show publicly: ");
-
-        $event->panel->add_block($sb);
     }
 
     public function delete_reports_by(int $user_id)

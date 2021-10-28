@@ -8,7 +8,7 @@ class RelationshipsTheme extends Themelet
 
         if ($image->parent_id !== null) {
             $a = "<a href='".make_link("post/view/".$image->parent_id)."'>parent post</a>";
-            $page->add_block(new Block(null, "This post belongs to a $a.", "main", 5));
+            $page->add_block(new Block(null, "This post belongs to a $a.", "main", 5, "ImageHasParent"));
         }
 
         if (bool_escape($image->has_children)) {
@@ -21,7 +21,7 @@ class RelationshipsTheme extends Themelet
             }
             $html = rtrim($html, ", ").").";
 
-            $page->add_block(new Block(null, $html, "main", 6));
+            $page->add_block(new Block(null, $html, "main", 6, "ImageHasChildren"));
         }
     }
 
@@ -48,7 +48,7 @@ class RelationshipsTheme extends Themelet
     }
 
 
-    public function get_help_html()
+    public function get_help_html(): string
     {
         return '<p>Search for posts that have parent/child relationships.</p>
         <div class="command_example">

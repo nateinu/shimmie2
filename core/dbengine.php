@@ -7,16 +7,15 @@ abstract class SCORE
 
 abstract class DBEngine
 {
-    /** @var null|string */
-    public $name = null;
+    public ?string $name = null;
 
     public function init(PDO $db)
     {
     }
 
-    public function scoreql_to_sql(string $scoreql): string
+    public function scoreql_to_sql(string $data): string
     {
-        return $scoreql;
+        return $data;
     }
 
     public function create_table_sql(string $name, string $data): string
@@ -24,7 +23,7 @@ abstract class DBEngine
         return 'CREATE TABLE '.$name.' ('.$data.')';
     }
 
-    abstract public function set_timeout(PDO $db, int $time);
+    abstract public function set_timeout(PDO $db, ?int $time);
 
     abstract public function get_version(PDO $db): string;
 
@@ -33,8 +32,7 @@ abstract class DBEngine
 
 class MySQL extends DBEngine
 {
-    /** @var string */
-    public $name = DatabaseDriver::MYSQL;
+    public ?string $name = DatabaseDriver::MYSQL;
 
     public function init(PDO $db)
     {
@@ -55,7 +53,7 @@ class MySQL extends DBEngine
         return 'CREATE TABLE '.$name.' ('.$data.') '.$ctes;
     }
 
-    public function set_timeout(PDO $db, int $time): void
+    public function set_timeout(PDO $db, ?int $time): void
     {
         // These only apply to read-only queries, which appears to be the best we can to mysql-wise
         // $db->exec("SET SESSION MAX_EXECUTION_TIME=".$time.";");
@@ -73,8 +71,7 @@ class MySQL extends DBEngine
 
 class PostgreSQL extends DBEngine
 {
-    /** @var string */
-    public $name = DatabaseDriver::PGSQL;
+    public ?string $name = DatabaseDriver::PGSQL;
 
     public function init(PDO $db)
     {
@@ -101,8 +98,11 @@ class PostgreSQL extends DBEngine
         return "CREATE TABLE $name ($data)";
     }
 
-    public function set_timeout(PDO $db, int $time): void
+    public function set_timeout(PDO $db, ?int $time): void
     {
+        if (is_null($time)) {
+            $time = 0;
+        }
         $db->exec("SET statement_timeout TO ".$time.";");
     }
 
@@ -122,19 +122,19 @@ class PostgreSQL extends DBEngine
 }
 
 // shimmie functions for export to sqlite
-function _unix_timestamp($date)
+function _unix_timestamp($date): int
 {
     return strtotime($date);
 }
-function _now()
+function _now(): string
 {
     return date("Y-m-d H:i:s");
 }
-function _floor($a)
+function _floor($a): float
 {
     return floor($a);
 }
-function _log($a, $b=null)
+function _log($a, $b=null): float
 {
     if (is_null($b)) {
         return log($a);
@@ -142,35 +142,34 @@ function _log($a, $b=null)
         return log($a, $b);
     }
 }
-function _isnull($a)
+function _isnull($a): bool
 {
     return is_null($a);
 }
-function _md5($a)
+function _md5($a): string
 {
     return md5($a);
 }
-function _concat($a, $b)
+function _concat($a, $b): string
 {
     return $a . $b;
 }
-function _lower($a)
+function _lower($a): string
 {
     return strtolower($a);
 }
-function _rand()
+function _rand(): int
 {
     return rand();
 }
-function _ln($n)
+function _ln($n): float
 {
     return log($n);
 }
 
 class SQLite extends DBEngine
 {
-    /** @var string  */
-    public $name = DatabaseDriver::SQLITE;
+    public ?string $name = DatabaseDriver::SQLITE;
 
     public function init(PDO $db)
     {
@@ -214,7 +213,7 @@ class SQLite extends DBEngine
         return "CREATE TABLE $name ($cols_redone); $extras";
     }
 
-    public function set_timeout(PDO $db, int $time): void
+    public function set_timeout(PDO $db, ?int $time): void
     {
         // There doesn't seem to be such a thing for SQLite, so it does nothing
     }

@@ -21,9 +21,8 @@ class PoolCreationException extends SCoreException
 
 class PoolAddPostsEvent extends Event
 {
-    public $pool_id;
-
-    public $posts = [];
+    public int $pool_id;
+    public array $posts = [];
 
     public function __construct(int $pool_id, array $posts)
     {
@@ -35,12 +34,11 @@ class PoolAddPostsEvent extends Event
 
 class PoolCreationEvent extends Event
 {
-    public $title;
-    public $user;
-    public $public;
-    public $description;
-
-    public $new_id = -1;
+    public string $title;
+    public User $user;
+    public bool $public;
+    public string $description;
+    public int $new_id = -1;
 
     public function __construct(
         string $title,
@@ -60,7 +58,7 @@ class PoolCreationEvent extends Event
 
 class PoolDeletionEvent extends Event
 {
-    public $pool_id;
+    public int $pool_id;
 
     public function __construct(int $pool_id)
     {
@@ -71,14 +69,14 @@ class PoolDeletionEvent extends Event
 
 class Pool
 {
-    public $id;
-    public $user_id;
-    public $user_name;
-    public $public;
-    public $title;
-    public $description;
-    public $date;
-    public $posts;
+    public int $id;
+    public int $user_id;
+    public ?string $user_name;
+    public bool $public;
+    public string $title;
+    public string $description;
+    public string $date;
+    public int $posts;
 
     public function __construct(array $row)
     {
@@ -106,7 +104,7 @@ function _image_to_id(Image $image): int
 class Pools extends Extension
 {
     /** @var PoolsTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function onInitExt(InitExtEvent $event)
     {
@@ -177,7 +175,7 @@ class Pools extends Extension
     // Add a block to the Board Config / Setup
     public function onSetupBuilding(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Pools");
+        $sb = $event->panel->create_new_block("Pools");
         $sb->add_int_option(PoolsConfig::MAX_IMPORT_RESULTS, "Max results on import: ");
         $sb->add_int_option(PoolsConfig::IMAGES_PER_PAGE, "<br>Posts per page: ");
         $sb->add_int_option(PoolsConfig::LISTS_PER_PAGE, "<br>Index list items per page: ");
@@ -186,8 +184,6 @@ class Pools extends Extension
         $sb->add_bool_option(PoolsConfig::SHOW_NAV_LINKS, "<br>Show 'Prev' & 'Next' links when viewing pool images: ");
         $sb->add_bool_option(PoolsConfig::AUTO_INCREMENT_ORDER, "<br>Autoincrement order when post is added to pool:");
         //$sb->add_bool_option(PoolsConfig::ADDER_ON_VIEW_IMAGE, "<br>Show pool adder on image: ");
-
-        $event->panel->add_block($sb);
     }
 
     public function onPageNavBuilding(PageNavBuildingEvent $event)

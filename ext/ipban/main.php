@@ -48,7 +48,7 @@ class IPBanTable extends Table
 
 class RemoveIPBanEvent extends Event
 {
-    public $id;
+    public int $id;
 
     public function __construct(int $id)
     {
@@ -59,10 +59,10 @@ class RemoveIPBanEvent extends Event
 
 class AddIPBanEvent extends Event
 {
-    public $ip;
-    public $mode;
-    public $reason;
-    public $expires;
+    public string $ip;
+    public string $mode;
+    public string $reason;
+    public ?string $expires;
 
     public function __construct(string $ip, string $mode, string $reason, ?string $expires)
     {
@@ -77,7 +77,7 @@ class AddIPBanEvent extends Event
 class IPBan extends Extension
 {
     /** @var IPBanTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function get_priority(): int
     {
@@ -209,7 +209,7 @@ class IPBan extends Extension
     {
         global $config;
 
-        $sb = new SetupBlock("IP Ban");
+        $sb = $event->panel->create_new_block("IP Ban");
         $sb->add_longtext_option("ipban_message", 'Message to show to banned users:<br>(with $IP, $DATE, $ADMIN, $REASON, and $CONTACT)');
         if ($config->get_string("ipban_message_ghost")) {
             $sb->add_longtext_option("ipban_message_ghost", 'Message to show to ghost users:');
@@ -217,7 +217,6 @@ class IPBan extends Extension
         if ($config->get_string("ipban_message_anon-ghost")) {
             $sb->add_longtext_option("ipban_message_anon-ghost", 'Message to show to ghost anons:');
         }
-        $event->panel->add_block($sb);
     }
 
     public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)

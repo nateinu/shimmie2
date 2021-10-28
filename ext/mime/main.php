@@ -7,7 +7,7 @@ require_once "mime_type.php";
 class MimeSystem extends Extension
 {
     /** @var MimeSystemTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     const VERSION = "ext_mime_version";
 
@@ -31,7 +31,7 @@ class MimeSystem extends Extension
                 // them into one big transaction would not be a good idea.
                 $database->commit();
             }
-            $database->set_timeout(300000); // These updates can take a little bit
+            $database->set_timeout(null); // These updates can take a little bit
 
             $extensions = $database->get_col_iterable("SELECT DISTINCT ext FROM images");
 

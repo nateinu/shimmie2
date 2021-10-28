@@ -5,7 +5,7 @@ use function MicroHTML\INPUT;
 
 class ApprovalTheme extends Themelet
 {
-    public function get_image_admin_html(Image $image)
+    public function get_image_admin_html(Image $image): string
     {
         if ($image->approved===true) {
             $html = SHM_SIMPLE_FORM(
@@ -24,8 +24,7 @@ class ApprovalTheme extends Themelet
         return (string)$html;
     }
 
-
-    public function get_help_html()
+    public function get_help_html(): string
     {
         return '<p>Search for posts that are approved/not approved.</p>
         <div class="command_example">
@@ -41,9 +40,8 @@ class ApprovalTheme extends Themelet
 
     public function display_admin_block(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Approval");
+        $sb = $event->panel->create_new_block("Approval");
         $sb->add_bool_option(ApprovalConfig::IMAGES, "Posts: ");
-        $event->panel->add_block($sb);
     }
 
     public function display_admin_form()

@@ -3,7 +3,7 @@
 class TagHistory extends Extension
 {
     /** @var TagHistoryTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     // in before tags are actually set, so that "get current tags" works
     public function get_priority(): int
@@ -61,12 +61,11 @@ class TagHistory extends Extension
     // so let's default to -1 and the user can go advanced if
     // they /really/ want to
     public function onSetupBuilding(SetupBuildingEvent $event) {
-        $sb = new SetupBlock("Tag History");
+        $sb = $event->panel->create_new_block("Tag History");
         $sb->add_label("Limit to ");
         $sb->add_int_option("history_limit");
         $sb->add_label(" entires per image");
         $sb->add_label("<br>(-1 for unlimited)");
-        $event->panel->add_block($sb);
     }
     */
 

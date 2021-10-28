@@ -3,7 +3,7 @@
 class AutoComplete extends Extension
 {
     /** @var AutoCompleteTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     public function get_priority(): int
     {
@@ -15,7 +15,7 @@ class AutoComplete extends Extension
         global $page;
 
         if ($event->page_matches("api/internal/autocomplete")) {
-            $limit = $_GET["limit"] ?? 0;
+            $limit = (int)($_GET["limit"] ?? 0);
             $s = $_GET["s"] ?? null;
 
             $res = $this->complete($s, $limit);

@@ -13,68 +13,31 @@ class Image
     public const IMAGE_DIR = "images";
     public const THUMBNAIL_DIR = "thumbs";
 
-    /** @var null|int */
-    public $id = null;
+    public ?int $id = null;
+    public int $height = 0;
+    public int $width = 0;
+    public string $hash;
+    public int $filesize;
+    public string $filename;
+    private string $ext;
+    private string $mime;
 
-    /** @var int */
-    public $height;
+    /** @var ?string[] */
+    public ?array $tag_array;
+    public int $owner_id;
+    public string $owner_ip;
+    public string $posted;
+    public ?string $source;
+    public bool $locked = false;
+    public ?bool $lossless = null;
+    public ?bool $video = null;
+    public ?string $video_codec = null;
+    public ?bool $image = null;
+    public ?bool $audio = null;
+    public ?int $length = null;
 
-    /** @var int */
-    public $width;
-
-    /** @var string */
-    public $hash;
-
-    /** @var int */
-    public $filesize;
-
-    /** @var string */
-    public $filename;
-
-    /** @var string */
-    private $ext;
-
-    /** @var string */
-    private $mime;
-
-    /** @var string[]|null */
-    public $tag_array;
-
-    /** @var int */
-    public $owner_id;
-
-    /** @var string */
-    public $owner_ip;
-
-    /** @var string */
-    public $posted;
-
-    /** @var string */
-    public $source;
-
-    /** @var boolean */
-    public $locked = false;
-
-    /** @var boolean */
-    public $lossless = null;
-
-    /** @var boolean */
-    public $video = null;
-
-    /** @var string */
-    public $video_codec = null;
-
-    /** @var boolean */
-    public $image = null;
-
-    /** @var boolean */
-    public $audio = null;
-
-    /** @var int */
-    public $length = null;
-
-    public static $bool_props = ["locked", "lossless", "video", "audio"];
-    public static $int_props = ["id", "owner_id", "height", "width", "filesize", "length"];
+    public static array $bool_props = ["locked", "lossless", "video", "audio", "image"];
+    public static array $int_props = ["id", "owner_id", "height", "width", "filesize", "length"];
 
     /**
      * One will very rarely construct an image directly, more common
@@ -145,7 +108,7 @@ class Image
 
     private static function find_images_internal(int $start = 0, ?int $limit = null, array $tags=[]): iterable
     {
-        global $database, $user, $config;
+        global $database, $user;
 
         if ($start < 0) {
             $start = 0;
@@ -161,9 +124,7 @@ class Image
         }
 
         $querylet = Image::build_search_querylet($tags, $limit, $start);
-        $result = $database->get_all_iterable($querylet->sql, $querylet->variables);
-
-        return $result;
+        return $database->get_all_iterable($querylet->sql, $querylet->variables);
     }
 
     /**
@@ -483,6 +444,7 @@ class Image
 				WHERE image_id=:id
 				ORDER BY tag
 			", ["id"=>$this->id]);
+            sort($this->tag_array);
         }
         return $this->tag_array;
     }
@@ -625,7 +587,9 @@ class Image
     public function set_mime($mime): void
     {
         $this->mime = $mime;
-        $this->ext = FileExtension::get_for_mime($this->get_mime());
+        $ext = FileExtension::get_for_mime($this->get_mime());
+        assert($ext != null);
+        $this->ext = $ext;
     }
 
 
@@ -919,12 +883,14 @@ class Image
             $positive_tag_id_array = [];
             $positive_wildcard_id_array = [];
             $negative_tag_id_array = [];
+            $all_nonexistent_negatives = true;
 
             foreach ($tag_conditions as $tq) {
                 $tag_ids = self::tag_or_wildcard_to_ids($tq->tag);
                 $tag_count = count($tag_ids);
 
                 if ($tq->positive) {
+                    $all_nonexistent_negatives = false;
                     if ($tag_count== 0) {
                         # one of the positive tags had zero results, therefor there
                         # can be no results; "where 1=0" should shortcut things
@@ -938,14 +904,20 @@ class Image
                         $positive_wildcard_id_array[] = $tag_ids;
                     }
                 } else {
-                    // Unlike positive criteria, negative criteria are all handled in an OR fashion,
-                    // so we can just compile them all into a single sub-query.
-                    $negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
+                    if ($tag_count > 0) {
+                        $all_nonexistent_negatives = false;
+                        // Unlike positive criteria, negative criteria are all handled in an OR fashion,
+                        // so we can just compile them all into a single sub-query.
+                        $negative_tag_id_array = array_merge($negative_tag_id_array, $tag_ids);
+                    }
                 }
             }
 
-            assert($positive_tag_id_array || $positive_wildcard_id_array || $negative_tag_id_array, @$_GET['q']);
-            if (!empty($positive_tag_id_array) || !empty($positive_wildcard_id_array)) {
+            assert($positive_tag_id_array || $positive_wildcard_id_array || $negative_tag_id_array || $all_nonexistent_negatives, @$_GET['q']);
+
+            if ($all_nonexistent_negatives) {
+                $query = new Querylet("SELECT images.* FROM images WHERE 1=1");
+            } elseif (!empty($positive_tag_id_array) || !empty($positive_wildcard_id_array)) {
                 $inner_joins = [];
                 if (!empty($positive_tag_id_array)) {
                     foreach ($positive_tag_id_array as $tag) {

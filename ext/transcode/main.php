@@ -12,7 +12,7 @@ class ImageTranscodeException extends SCoreException
 class TranscodeImage extends Extension
 {
     /** @var TranscodeImageTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     const ACTION_BULK_TRANSCODE = "bulk_transcode";
 
@@ -25,7 +25,8 @@ class TranscodeImage extends Extension
         "PPM" => MimeType::PPM,
         "PSD" => MimeType::PSD,
         "TIFF" => MimeType::TIFF,
-        "WEBP" => MimeType::WEBP
+        "WEBP" => MimeType::WEBP,
+        "TGA" => MimeType::TGA
     ];
 
     const OUTPUT_MIMES = [
@@ -125,7 +126,7 @@ class TranscodeImage extends Extension
     {
         global $user, $config;
 
-        if ($user->can(Permissions::EDIT_FILES)) {
+        if ($user->can(Permissions::EDIT_FILES) && $event->context != "report") {
             $engine = $config->get_string(TranscodeConfig::ENGINE);
             if ($this->can_convert_mime($engine, $event->image->get_mime())) {
                 $options = $this->get_supported_output_mimes($engine, $event->image->get_mime());
@@ -141,7 +142,7 @@ class TranscodeImage extends Extension
         $engine = $config->get_string(TranscodeConfig::ENGINE);
 
 
-        $sb = new SetupBlock("Image Transcode");
+        $sb = $event->panel->create_new_block("Image Transcode");
         $sb->start_table();
         $sb->add_bool_option(TranscodeConfig::ENABLED, "Allow transcoding images", true);
         $sb->add_bool_option(TranscodeConfig::GET_ENABLED, "Enable GET args", true);
@@ -156,7 +157,6 @@ class TranscodeImage extends Extension
         $sb->add_int_option(TranscodeConfig::QUALITY, "Lossy Format Quality", true);
         $sb->add_color_option(TranscodeConfig::ALPHA_COLOR, "Alpha Conversion Color", true);
         $sb->end_table();
-        $event->panel->add_block($sb);
     }
 
     public function onDataUpload(DataUploadEvent $event)

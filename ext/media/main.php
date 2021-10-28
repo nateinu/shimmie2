@@ -15,7 +15,7 @@ class MediaException extends SCoreException
 class Media extends Extension
 {
     /** @var MediaTheme */
-    protected $theme;
+    protected ?Themelet $theme;
 
     private const LOSSLESS_FORMATS = [
         MimeType::WEBP_LOSSLESS,
@@ -79,7 +79,7 @@ class Media extends Extension
 
     public function onSetupBuilding(SetupBuildingEvent $event)
     {
-        $sb = new SetupBlock("Media Engines");
+        $sb = $event->panel->create_new_block("Media Engines");
 
 //        if (self::imagick_available()) {
 //            try {
@@ -101,8 +101,6 @@ class Media extends Extension
 
         $sb->add_shorthand_int_option(MediaConfig::MEM_LIMIT, "Mem limit", true);
         $sb->end_table();
-
-        $event->panel->add_block($sb);
     }
 
     public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
@@ -508,7 +506,7 @@ class Media extends Extension
 //        }
 //    }
 
-    public static function is_lossless(string $filename, string $mime)
+    public static function is_lossless(string $filename, string $mime): bool
     {
         if (in_array($mime, self::LOSSLESS_FORMATS)) {
             return true;
@@ -516,7 +514,6 @@ class Media extends Extension
         switch ($mime) {
             case MimeType::WEBP:
                 return MimeType::is_lossless_webp($filename);
-                break;
         }
         return false;
     }
@@ -634,7 +631,7 @@ class Media extends Extension
      * @param int $new_width
      * @param int $new_height
      * @param string $output_filename
-     * @param string|null $output_mime If set to null, the output file type will be automatically determined via the $info parameter. Otherwise an exception will be thrown.
+     * @param ?string $output_mime If set to null, the output file type will be automatically determined via the $info parameter. Otherwise an exception will be thrown.
      * @param int $output_quality Defaults to 80.
      * @throws MediaException
      * @throws InsufficientMemoryException if the estimated memory usage exceeds the memory limit.
@@ -645,7 +642,7 @@ class Media extends Extension
         int $new_width,
         int $new_height,
         string $output_filename,
-        string $output_mime = null,
+        ?string $output_mime = null,
         string $alpha_color = Media::DEFAULT_ALPHA_CONVERSION_COLOR,
         string $resize_type = self::RESIZE_TYPE_FIT,
         int $output_quality = 80,

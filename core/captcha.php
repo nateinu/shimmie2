@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * CAPTCHA abstraction                                                       *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -40,7 +42,7 @@ function captcha_check(): bool
         $r_privatekey = $config->get_string('api_recaptcha_privkey');
         if (!empty($r_privatekey)) {
             $recaptcha = new ReCaptcha($r_privatekey);
-            $resp = $recaptcha->verify($_POST['g-recaptcha-response'], $_SERVER['REMOTE_ADDR']);
+            $resp = $recaptcha->verify($_POST['g-recaptcha-response'] ?? "", $_SERVER['REMOTE_ADDR']);
 
             if (!$resp->isSuccess()) {
                 log_info("core", "Captcha failed (ReCaptcha): " . implode("", $resp->getErrorCodes()));

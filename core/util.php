@@ -1,4 +1,7 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
+use MicroHTML\HTMLElement;
 use function MicroHTML\emptyHTML;
 use function MicroHTML\rawHTML;
 use function MicroHTML\FORM;
@@ -12,7 +15,6 @@ use function MicroHTML\TFOOT;
 use function MicroHTML\TR;
 use function MicroHTML\TH;
 use function MicroHTML\TD;
-use MicroHTML\HTMLElement;
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Misc                                                                      *
@@ -63,6 +65,10 @@ function contact_link(): ?string
  */
 function is_https_enabled(): bool
 {
+    // check forwarded protocol
+    if (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] == 'https') {
+        $_SERVER['HTTPS']='on';
+    }
     return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
 }
 
@@ -592,6 +598,7 @@ function _fatal_error(Exception $e): void
     $message = $e->getMessage();
     $phpver = phpversion();
     $query = is_subclass_of($e, "SCoreException") ? $e->query : null;
+    $code = is_subclass_of($e, "SCoreException") ? $e->http_code : 500;
 
     //$hash = exec("git rev-parse HEAD");
     //$h_hash = $hash ? "<p><b>Hash:</b> $hash" : "";
@@ -616,7 +623,10 @@ function _fatal_error(Exception $e): void
         print("Version: $version (on $phpver)\n");
     } else {
         $q = $query ? "" : "<p><b>Query:</b> " . html_escape($query);
-        header("HTTP/1.0 500 Internal Error");
+        if ($code >= 500) {
+            error_log("Shimmie Error: $message (Query: $query)\n{$e->getTraceAsString()}");
+        }
+        header("HTTP/1.0 $code Error");
         echo '
 <!doctype html>
 <html lang="en">
@@ -655,7 +665,7 @@ function _get_user(): User
 
 function _get_query(): string
 {
-    return (@$_POST["q"]?:@$_GET["q"])?:"/";
+    return (@$_POST["q"] ?: @$_GET["q"]) ?: "/";
 }
 
 

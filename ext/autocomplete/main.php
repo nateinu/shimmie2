@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 class AutoComplete extends Extension
 {
@@ -16,7 +18,7 @@ class AutoComplete extends Extension
 
         if ($event->page_matches("api/internal/autocomplete")) {
             $limit = (int)($_GET["limit"] ?? 0);
-            $s = $_GET["s"] ?? null;
+            $s = $_GET["s"] ?? "";
 
             $res = $this->complete($s, $limit);
 

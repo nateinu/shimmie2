@@ -1,14 +1,15 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 /**
- * Class SCoreException
- *
  * A base exception to be caught by the upper levels.
  */
 class SCoreException extends RuntimeException
 {
     public ?string $query;
     public string $error;
+    public int $http_code = 500;
 
     public function __construct(string $msg, ?string $query=null)
     {
@@ -33,43 +34,58 @@ class InstallerException extends RuntimeException
     }
 }
 
-/**
- * Class PermissionDeniedException
- *
- * A fairly common, generic exception.
- */
-class PermissionDeniedException extends SCoreException
+class UserErrorException extends SCoreException
 {
+    public int $http_code = 400;
+}
+
+class ServerErrorException extends SCoreException
+{
+    public int $http_code = 500;
 }
 
 /**
- * Class ImageDoesNotExist
- *
- * This exception is used when an Image cannot be found by ID.
- *
- * Example: Image::by_id(-1) returns null
+ * A fairly common, generic exception.
  */
-class ImageDoesNotExist extends SCoreException
+class PermissionDeniedException extends UserErrorException
 {
+    public int $http_code = 403;
+}
+
+/**
+ * This exception is used when an Image cannot be found by ID.
+ */
+class ImageDoesNotExist extends UserErrorException
+{
+    public int $http_code = 404;
+}
+
+/**
+ * This exception is used when a User cannot be found by some criteria.
+ */
+class UserDoesNotExist extends UserErrorException
+{
+    public int $http_code = 404;
 }
 
 /*
  * For validate_input()
  */
-class InvalidInput extends SCoreException
+class InvalidInput extends UserErrorException
 {
+    public int $http_code = 402;
 }
 
 /*
  * This is used by the image resizing code when there is not enough memory to perform a resize.
  */
-class InsufficientMemoryException extends SCoreException
+class InsufficientMemoryException extends ServerErrorException
 {
 }
 
 /*
  * This is used by the image resizing code when there is an error while resizing
  */
-class ImageResizeException extends SCoreException
+class ImageResizeException extends ServerErrorException
 {
 }

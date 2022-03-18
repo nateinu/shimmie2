@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 
 class RSSImages extends Extension
@@ -27,8 +29,14 @@ class RSSImages extends Extension
             if (SPEED_HAX && $page_number > 9) {
                 return;
             }
-            $images = Image::find_images(($page_number-1)*$page_size, $page_size, $search_terms);
-            $this->do_rss($images, $search_terms, $page_number);
+            try {
+                $images = Image::find_images(($page_number-1)*$page_size, $page_size, $search_terms);
+                $this->do_rss($images, $search_terms, $page_number);
+            } catch (SearchTermParseException $stpe) {
+                $this->theme->display_error(400, "Search parse error", $stpe->error);
+            } catch (PermissionDeniedException $pde) {
+                $this->theme->display_error(403, "Permission denied", $pde->error);
+            }
         }
     }
 

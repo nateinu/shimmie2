@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 class WikiTheme extends Themelet
 {
@@ -28,9 +30,13 @@ class WikiTheme extends Themelet
         // see if title is a category'd tag
         $title_html = html_escape($wiki_page->title);
         if (class_exists('TagCategories')) {
-            $this->tagcategories = new TagCategories;
+            $this->tagcategories = new TagCategories();
             $tag_category_dict = $this->tagcategories->getKeyedDict();
             $title_html = $this->tagcategories->getTagHtml($title_html, $tag_category_dict);
+        }
+
+        if (!$wiki_page->exists) {
+            $page->set_code(404);
         }
 
         $page->set_title(html_escape($wiki_page->title));
@@ -38,6 +44,20 @@ class WikiTheme extends Themelet
         $page->add_block(new NavBlock());
         $page->add_block(new Block("Wiki Index", $tfe->formatted, "left", 20));
         $page->add_block(new Block($title_html, $this->create_display_html($wiki_page)));
+    }
+
+    public function display_page_history(Page $page, string $title, array $history)
+    {
+        $html = "<table class='zebra'>";
+        foreach ($history as $row) {
+            $rev = $row['revision'];
+            $html .= "<tr><td><a href='".make_link("wiki/$title", "revision=$rev")."'>{$rev}</a></td><td>{$row['date']}</td></tr>";
+        }
+        $html .= "</table>";
+        $page->set_title(html_escape($title));
+        $page->set_heading(html_escape($title));
+        $page->add_block(new NavBlock());
+        $page->add_block(new Block(html_escape($title), $html));
     }
 
     public function display_page_editor(Page $page, WikiPage $wiki_page)
@@ -109,7 +129,7 @@ class WikiTheme extends Themelet
 			$formatted_body
 			<hr>
 			<p class='wiki-footer'>
-				Revision {$page->revision}
+				<a href='".make_link("wiki_admin/history", "title={$page->title}")."'>Revision {$page->revision}</a>
 				by <a href='".make_link("user/{$owner->name}")."'>{$owner->name}</a>
 				at {$page->date}
 				$edit

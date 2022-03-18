@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 /**
  * Class Image
  *
@@ -119,7 +121,7 @@ class Image
 
         if (SPEED_HAX) {
             if (!$user->can(Permissions::BIG_SEARCH) and count($tags) > 3) {
-                throw new SCoreException("Anonymous users may only search for up to 3 tags at a time");
+                throw new PermissionDeniedException("Anonymous users may only search for up to 3 tags at a time");
             }
         }
 

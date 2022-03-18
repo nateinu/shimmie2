@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 use function MicroHTML\LABEL;
 use function MicroHTML\A;
@@ -60,7 +62,7 @@ class ExtManagerTheme extends Themelet
                 TD(LABEL(
                     ["for"=>"ext_{$extension->key}"],
                     (
-                        ($extension->beta===true ? "[BETA] ":"").
+                        ($extension->beta===true ? "[BETA] " : "").
                         (empty($extension->name) ? $extension->key : $extension->name)
                     )
                 )),
@@ -107,7 +109,7 @@ class ExtManagerTheme extends Themelet
         $html = DIV(
             ["style"=>'margin: auto; text-align: left; width: 512px;'],
             $author,
-            ($info->version ? emptyHTML(BR(), B("Version"), $info->version) : null),
+            ($info->version ? emptyHTML(BR(), B("Version: "), $info->version) : null),
             ($info->link ? emptyHTML(BR(), B("Home Page"), A(["href"=>$info->link], "Link")) : null),
             P(rawHTML($info->documentation ?? "(This extension has no documentation)")),
             // <hr>,

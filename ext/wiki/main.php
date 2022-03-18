@@ -1,4 +1,6 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 class WikiUpdateEvent extends Event
 {
@@ -50,11 +52,13 @@ class WikiPage
     public string $title;
     public int $revision;
     public bool $locked;
+    public bool $exists;
     public string $body;
 
     public function __construct(array $row=null)
     {
         //assert(!empty($row));
+        global $database;
 
         if (!is_null($row)) {
             $this->id = (int)$row['id'];
@@ -64,6 +68,7 @@ class WikiPage
             $this->title = $row['title'];
             $this->revision = (int)$row['revision'];
             $this->locked = bool_escape($row['locked']);
+            $this->exists = $database->exists("SELECT id FROM wiki_pages WHERE title = :title", ["title"=>$this->title]);
             $this->body = $row['body'];
         }
     }
@@ -77,14 +82,19 @@ class WikiPage
     {
         return $this->locked;
     }
+
+    public function exists(): bool
+    {
+        return $this->exists;
+    }
 }
 
 abstract class WikiConfig
 {
-    const TAG_PAGE_TEMPLATE = "wiki_tag_page_template";
-    const EMPTY_TAGINFO = "wiki_empty_taginfo";
-    const TAG_SHORTWIKIS = "shortwikis_on_tags";
-    const ENABLE_REVISIONS = "wiki_revisions";
+    public const TAG_PAGE_TEMPLATE = "wiki_tag_page_template";
+    public const EMPTY_TAGINFO = "wiki_empty_taginfo";
+    public const TAG_SHORTWIKIS = "shortwikis_on_tags";
+    public const ENABLE_REVISIONS = "wiki_revisions";
 }
 
 class Wiki extends Extension
@@ -157,7 +167,12 @@ class Wiki extends Extension
                 $title = $event->get_arg(0);
             }
 
-            $content = $this->get_page($title);
+            $revision = -1;
+            if (isset($_GET['revision'])) {
+                $revision = int_escape($_GET['revision']);
+            }
+
+            $content = $this->get_page($title, $revision);
             $this->theme->display_page($page, $content, $this->get_page("wiki:sidebar"));
         } elseif ($event->page_matches("wiki_admin/edit")) {
             $content = $this->get_page($_POST['title']);
@@ -191,6 +206,9 @@ class Wiki extends Extension
             } else {
                 $this->theme->display_permission_denied();
             }
+        } elseif ($event->page_matches("wiki_admin/history")) {
+            $history = $this->get_history($_GET['title']);
+            $this->theme->display_page_history($page, $_GET['title'], $history);
         } elseif ($event->page_matches("wiki_admin/delete_revision")) {
             if ($user->can(Permissions::WIKI_ADMIN)) {
                 send_event(new WikiDeleteRevisionEvent($_POST["title"], (int)$_POST["revision"]));
@@ -294,6 +312,20 @@ class Wiki extends Extension
         return false;
     }
 
+    public static function get_history(string $title): array
+    {
+        global $database;
+        // first try and get the actual page
+        return $database->get_all(
+            "
+				SELECT revision, date
+				FROM wiki_pages
+				WHERE LOWER(title) LIKE LOWER(:title)
+				ORDER BY revision DESC
+			",
+            ["title"=>$title]
+        );
+    }
     public static function get_page(string $title, int $revision=-1): WikiPage
     {
         global $database;
@@ -303,9 +335,10 @@ class Wiki extends Extension
 				SELECT *
 				FROM wiki_pages
 				WHERE LOWER(title) LIKE LOWER(:title)
+				AND (:revision = -1 OR revision = :revision)
 				ORDER BY revision DESC
 			",
-            ["title"=>$title]
+            ["title"=>$title, "revision"=>$revision]
         );
 
         // fall back to wiki:default
@@ -356,7 +389,7 @@ class Wiki extends Extension
 
             //CATEGORIES
             if (class_exists("TagCategories")) {
-                $tagcategories = new TagCategories;
+                $tagcategories = new TagCategories();
                 $tag_category_dict = $tagcategories->getKeyedDict();
             }
 
@@ -389,7 +422,7 @@ class Wiki extends Extension
                     $auto_tags = Tag::explode($auto_tags);
                     $f_auto_tags = [];
 
-                    $tag_list_t = new TagListTheme;
+                    $tag_list_t = new TagListTheme();
 
                     foreach ($auto_tags as $a_tag) {
                         $a_row = $database->get_row("
@@ -474,7 +507,7 @@ class Wiki extends Extension
                 *   add to output-string, if "show_equal" is enabled
                 */
                 $out    .= ($show_equal==1)
-                         ?  $this->formatline(($c1), ($c2), "=", $f1[ $c1 ])
+                         ? $this->formatline(($c1), ($c2), "=", $f1[ $c1 ])
                          : "" ;
                 /**
                 *   increase the out-putcounter, if "show_equal" is enabled

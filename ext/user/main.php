@@ -1,8 +1,9 @@
-<?php declare(strict_types=1);
+<?php
+
+declare(strict_types=1);
 
 require_once "events.php";
 
-use function MicroHTML\A;
 use MicroHTML\HTMLElement;
 use MicroCRUD\ActionColumn;
 use MicroCRUD\EnumColumn;
@@ -10,6 +11,7 @@ use MicroCRUD\IntegerColumn;
 use MicroCRUD\TextColumn;
 use MicroCRUD\DateColumn;
 use MicroCRUD\Table;
+use function MicroHTML\A;
 
 class UserNameColumn extends TextColumn
 {
@@ -385,8 +387,13 @@ class UserPage extends Extension
 
         $matches = [];
         if (preg_match(self::USER_SEARCH_REGEX, $event->term, $matches)) {
-            $user_id = User::name_to_id($matches[2]);
-            $event->add_querylet(new Querylet("images.owner_id ${matches[1]}= $user_id"));
+            $duser = User::by_name($matches[2]);
+            if (is_null($duser)) {
+                throw new SearchTermParseException(
+                    "Can't find the user named ".html_escape($matches[2])
+                );
+            }
+            $event->add_querylet(new Querylet("images.owner_id ${matches[1]}= {$duser->id}"));
         } elseif (preg_match(self::USER_ID_SEARCH_REGEX, $event->term, $matches)) {
             $user_id = int_escape($matches[2]);
             $event->add_querylet(new Querylet("images.owner_id ${matches[1]}= $user_id"));
@@ -725,9 +732,9 @@ class UserPage extends Extension
 
             if ($with_images) {
                 log_warning("user", "Deleting user #{$_POST['id']} (@{$duser->name})'s uploads");
-                $rows = $database->get_all("SELECT * FROM images WHERE owner_id = :owner_id", ["owner_id" => $_POST['id']]);
-                foreach ($rows as $key => $value) {
-                    $image = Image::by_id($value['id']);
+                $image_ids = $database->get_col("SELECT id FROM images WHERE owner_id = :owner_id", ["owner_id" => $_POST['id']]);
+                foreach ($image_ids as $image_id) {
+                    $image = Image::by_id((int)$image_id);
                     if ($image) {
                         send_event(new ImageDeletionEvent($image));
                     }

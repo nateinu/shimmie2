@@ -1,0 +1,19 @@
+parameters:
+  errorFormat: raw
+  level: 7
+  paths:
+    - ../core
+    - ../ext
+    - ../tests
+    - ../themes
+  dynamicConstantNames:
+    - DEBUG
+    - SPEED_HAX
+    - TRUSTED_PROXIES
+    - TIMEZONE
+    - BASE_HREF
+    - STATSD_HOST
+    - TRACE_FILE
+    - UNITTEST
+#includes:
+#  - ../vendor/thecodingmachine/phpstan-safe-rule/phpstan-safe-rule.neon

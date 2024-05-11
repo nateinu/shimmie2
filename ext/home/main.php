@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class Home extends Extension
 {
     /** @var HomeTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $config, $page;
         if ($event->page_matches("home")) {
@@ -21,10 +23,12 @@ class Home extends Extension
         }
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $counters = [];
-        foreach (glob("ext/home/counters/*") as $counter_dirname) {
+        $counters["None"] = "none";
+        $counters["Text-only"] = "text-only";
+        foreach (\Safe\glob("ext/home/counters/*") as $counter_dirname) {
             $name = str_replace("ext/home/counters/", "", $counter_dirname);
             $counters[ucfirst($name)] = $name;
         }
@@ -48,15 +52,18 @@ class Home extends Extension
         }
         $counter_dir = $config->get_string('home_counter', 'default');
 
-        $total = Image::count_images();
-        $strtotal = "$total";
+        $total = Search::count_images();
         $num_comma = number_format($total);
-
         $counter_text = "";
-        $length = strlen($strtotal);
-        for ($n=0; $n<$length; $n++) {
-            $cur = $strtotal[$n];
-            $counter_text .= "<img alt='$cur' src='$base_href/ext/home/counters/$counter_dir/$cur.gif' />";
+        if ($counter_dir != 'none') {
+            if ($counter_dir != 'text-only') {
+                $strtotal = "$total";
+                $length = strlen($strtotal);
+                for ($n = 0; $n < $length; $n++) {
+                    $cur = $strtotal[$n];
+                    $counter_text .= "<img class='counter-img' alt='$cur' src='$base_href/ext/home/counters/$counter_dir/$cur.gif' />";
+                }
+            }
         }
 
         // get the homelinks and process them
@@ -64,10 +71,10 @@ class Home extends Extension
             $main_links = $config->get_string('home_links');
         } else {
             $main_links = '[url=site://post/list]Posts[/url][url=site://comment/list]Comments[/url][url=site://tags]Tags[/url]';
-            if (class_exists("Pools")) {
+            if (Extension::is_enabled(PoolsInfo::KEY)) {
                 $main_links .= '[url=site://pool/list]Pools[/url]';
             }
-            if (class_exists("Wiki")) {
+            if (Extension::is_enabled(WikiInfo::KEY)) {
                 $main_links .= '[url=site://wiki]Wiki[/url]';
             }
             $main_links .= '[url=site://ext_doc]Documentation[/url]';

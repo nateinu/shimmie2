@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 /** @var Config */
 global $user_config;
 
@@ -40,19 +42,19 @@ class UserOptionsBuildingEvent extends Event
 class UserConfig extends Extension
 {
     /** @var UserConfigTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
     public const VERSION = "ext_user_config_version";
     public const ENABLE_API_KEYS = "ext_user_config_enable_api_keys";
     public const API_KEY = "api_key";
 
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
         global $config;
         $config->set_default_bool(self::ENABLE_API_KEYS, false);
     }
 
-    public function onUserLogin(UserLoginEvent $event)
+    public function onUserLogin(UserLoginEvent $event): void
     {
         global $user_config;
 
@@ -88,23 +90,31 @@ class UserConfig extends Extension
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent==="user" && !$user->is_anonymous()) {
+        if ($event->parent === "user" && !$user->is_anonymous()) {
             $event->add_nav_link("user_config", new Link('user_config'), "User Options", false, 40);
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
+    {
+        global $user;
+        if (!$user->is_anonymous()) {
+            $event->add_link("User Options", make_link("user_config"), 40);
+        }
+    }
+
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $user, $database, $config, $page, $user_config;
 
         if ($config->get_bool(self::ENABLE_API_KEYS)) {
-            if (!empty($_GET["api_key"]) && $user->is_anonymous()) {
+            if ($event->get_GET("api_key") && $user->is_anonymous()) {
                 $user_id = $database->get_one(
                     "SELECT user_id FROM user_config WHERE value=:value AND name=:name",
-                    ["value" => $_GET["api_key"], "name" => self::API_KEY]
+                    ["value" => $event->get_GET("api_key"), "name" => self::API_KEY]
                 );
 
                 if (!empty($user_id)) {
@@ -115,61 +125,38 @@ class UserConfig extends Extension
                 }
             }
 
-            if ($event->page_matches("user_admin")) {
-                if (!$user->check_auth_token()) {
-                    return;
-                }
-                switch ($event->get_arg(0)) {
-                    case "reset_api_key":
-                        $user_config->set_string(self::API_KEY, "");
+            if ($event->page_matches("user_admin/reset_api_key", method: "POST")) {
+                $user_config->set_string(self::API_KEY, "");
 
-                        $page->set_mode(PageMode::REDIRECT);
-                        $page->set_redirect(make_link("user"));
-
-                        break;
-                }
+                $page->set_mode(PageMode::REDIRECT);
+                $page->set_redirect(make_link("user"));
             }
         }
 
-        if ($event->page_matches("user_config")) {
-            if (!$user->can(Permissions::CHANGE_USER_SETTING)) {
-                $this->theme->display_permission_denied();
-            } else {
-                if ($event->count_args() == 0) {
-                    $display_user = ($event->count_args() == 0) ? $user : User::by_name($event->get_arg(0));
+        if ($event->page_matches("user_config", method: "GET", permission: Permissions::CHANGE_USER_SETTING)) {
+            $uobe = send_event(new UserOptionsBuildingEvent($user, new SetupPanel($user_config)));
+            $this->theme->display_user_config_page($page, $uobe->user, $uobe->panel);
+        }
+        if ($event->page_matches("user_config/save", method: "POST", permission: Permissions::CHANGE_USER_SETTING)) {
+            $input = validate_input([
+                'id' => 'user_id,exists'
+            ]);
+            $duser = User::by_id($input['id']);
 
-                    if ($user->id!=$display_user->id && !$user->can(Permissions::CHANGE_OTHER_USER_SETTING)) {
-                        $this->theme->display_permission_denied();
-                        return;
-                    }
-
-                    $uobe = new UserOptionsBuildingEvent($display_user, new SetupPanel($user_config));
-                    send_event($uobe);
-
-                    $this->theme->display_user_config_page($page, $uobe->user, $uobe->panel);
-                } elseif ($event->get_arg(0) == "save" && $user->check_auth_token()) {
-                    $input = validate_input([
-                        'id' => 'user_id,exists'
-                    ]);
-                    $duser = User::by_id($input['id']);
-
-                    if ($user->id!=$duser->id && !$user->can(Permissions::CHANGE_OTHER_USER_SETTING)) {
-                        $this->theme->display_permission_denied();
-                        return;
-                    }
-
-                    $target_config = UserConfig::get_for_user($duser->id);
-                    send_event(new ConfigSaveEvent($target_config));
-                    $target_config->save();
-                    $page->flash("Config saved");
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("user_config"));
-                }
+            if ($user->id != $duser->id && !$user->can(Permissions::CHANGE_OTHER_USER_SETTING)) {
+                throw new PermissionDenied("You do not have permission to change other user's settings");
             }
+
+            $target_config = UserConfig::get_for_user($duser->id);
+            send_event(new ConfigSaveEvent($target_config, $event->POST));
+            $target_config->save();
+            $page->flash("Config saved");
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("user_config"));
         }
     }
 
-    public function onUserOperationsBuilding(UserOperationsBuildingEvent $event)
+    public function onUserOperationsBuilding(UserOperationsBuildingEvent $event): void
     {
         global $config;
 
@@ -179,7 +166,7 @@ class UserConfig extends Extension
                 $key = generate_key();
                 $event->user_config->set_string(self::API_KEY, $key);
             }
-            $event->add_html($this->theme->get_user_operations($key));
+            $event->add_part($this->theme->get_user_operations($key));
         }
     }
 

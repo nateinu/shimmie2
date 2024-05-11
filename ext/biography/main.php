@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class Biography extends Extension
 {
     /** @var BiographyTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onUserPageBuilding(UserPageBuildingEvent $event)
+    public function onUserPageBuilding(UserPageBuildingEvent $event): void
     {
         global $page, $user;
         $duser = $event->display_user;
@@ -21,16 +23,14 @@ class Biography extends Extension
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user, $user_config;
-        if ($event->page_matches("biography")) {
-            if ($user->check_auth_token()) {
-                $user_config->set_string("biography", $_POST['biography']);
-                $page->flash("Bio Updated");
-                $page->set_mode(PageMode::REDIRECT);
-                $page->set_redirect(referer_or(make_link()));
-            }
+        if ($event->page_matches("biography", method: "POST")) {
+            $user_config->set_string("biography", $event->get_POST('biography'));
+            $page->flash("Bio Updated");
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(referer_or(make_link()));
         }
     }
 }

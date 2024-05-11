@@ -1,12 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Things which should be in the core API                                    *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 /**
  * Return the unique elements of an array, case insensitively
+ *
+ * @param array<string> $array
+ * @return list<string>
  */
 function array_iunique(array $array): array
 {
@@ -33,10 +39,14 @@ function array_iunique(array $array): array
  */
 function ip_in_range(string $IP, string $CIDR): bool
 {
-    list($net, $mask) = explode("/", $CIDR);
+    $parts = explode("/", $CIDR);
+    if(count($parts) == 1) {
+        $parts[1] = "32";
+    }
+    list($net, $mask) = $parts;
 
     $ip_net = ip2long($net);
-    $ip_mask = ~((1 << (32 - $mask)) - 1);
+    $ip_mask = ~((1 << (32 - (int)$mask)) - 1);
 
     $ip_ip = ip2long($IP);
 
@@ -47,42 +57,16 @@ function ip_in_range(string $IP, string $CIDR): bool
 
 /**
  * Delete an entire file heirachy
- *
- * from a patch by Christian Walde; only intended for use in the
- * "extension manager" extension, but it seems to fit better here
  */
-function deltree(string $f): void
+function deltree(string $dir): void
 {
-    //Because Windows (I know, bad excuse)
-    if (PHP_OS === 'WINNT') {
-        $real = realpath($f);
-        $path = realpath('./').'\\'.str_replace('/', '\\', $f);
-        if ($path != $real) {
-            rmdir($path);
-        } else {
-            foreach (glob($f.'/*') as $sf) {
-                if (is_dir($sf) && !is_link($sf)) {
-                    deltree($sf);
-                } else {
-                    unlink($sf);
-                }
-            }
-            rmdir($f);
-        }
-    } else {
-        if (is_link($f)) {
-            unlink($f);
-        } elseif (is_dir($f)) {
-            foreach (glob($f.'/*') as $sf) {
-                if (is_dir($sf) && !is_link($sf)) {
-                    deltree($sf);
-                } else {
-                    unlink($sf);
-                }
-            }
-            rmdir($f);
-        }
+    $di = new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS | \FilesystemIterator::KEY_AS_PATHNAME);
+    $ri = new \RecursiveIteratorIterator($di, \RecursiveIteratorIterator::CHILD_FIRST);
+    /** @var \SplFileInfo $file */
+    foreach ($ri as $filename => $file) {
+        $file->isDir() ? rmdir($filename) : unlink($filename);
     }
+    rmdir($dir);
 }
 
 /**
@@ -95,9 +79,13 @@ function full_copy(string $source, string $target): void
     if (is_dir($source)) {
         @mkdir($target);
 
-        $d = dir($source);
+        $d = dir_ex($source);
 
-        while (false !== ($entry = $d->read())) {
+        while (true) {
+            $entry = $d->read();
+            if ($entry === false) {
+                break;
+            }
             if ($entry == '.' || $entry == '..') {
                 continue;
             }
@@ -117,8 +105,10 @@ function full_copy(string $source, string $target): void
 
 /**
  * Return a list of all the regular files in a directory and subdirectories
+ *
+ * @return string[]
  */
-function list_files(string $base, string $_sub_dir=""): array
+function list_files(string $base, string $_sub_dir = ""): array
 {
     assert(is_dir($base));
 
@@ -126,8 +116,8 @@ function list_files(string $base, string $_sub_dir=""): array
 
     $files = [];
     $dir = opendir("$base/$_sub_dir");
-    if ($dir===false) {
-        throw new SCoreException("Unable to open directory $base/$_sub_dir");
+    if ($dir === false) {
+        throw new UserError("Unable to open directory $base/$_sub_dir");
     }
     try {
         while ($f = readdir($dir)) {
@@ -169,13 +159,16 @@ function flush_output(): void
 function stream_file(string $file, int $start, int $end): void
 {
     $fp = fopen($file, 'r');
+    if(!$fp) {
+        throw new \Exception("Failed to open $file");
+    }
     try {
-        set_time_limit(0);
         fseek($fp, $start);
         $buffer = 1024 * 1024;
         while (!feof($fp) && ($p = ftell($fp)) <= $end) {
             if ($p + $buffer > $end) {
                 $buffer = $end - $p + 1;
+                assert($buffer >= 0);
             }
             echo fread($fp, $buffer);
             flush_output();
@@ -195,13 +188,13 @@ function stream_file(string $file, int $start, int $end): void
 # http://www.php.net/manual/en/function.http-parse-headers.php#112917
 if (!function_exists('http_parse_headers')) {
     /**
-     * #return string[]
+     * @return array<string, string|string[]>
      */
     function http_parse_headers(string $raw_headers): array
     {
-        $headers = []; // $headers = [];
+        $headers = [];
 
-        foreach (explode("\n", $raw_headers) as $i => $h) {
+        foreach (explode("\n", $raw_headers) as $h) {
             $h = explode(':', $h, 2);
 
             if (isset($h[1])) {
@@ -223,13 +216,11 @@ if (!function_exists('http_parse_headers')) {
 /**
  * HTTP Headers can sometimes be lowercase which will cause issues.
  * In cases like these, we need to make sure to check for them if the camelcase version does not exist.
+ *
+ * @param array<string, mixed> $headers
  */
 function find_header(array $headers, string $name): ?string
 {
-    if (!is_array($headers)) {
-        return null;
-    }
-
     $header = null;
 
     if (array_key_exists($name, $headers)) {
@@ -246,28 +237,14 @@ function find_header(array $headers, string $name): ?string
     return $header;
 }
 
-if (!function_exists('mb_strlen')) {
-    // TODO: we should warn the admin that they are missing multibyte support
-    /** @noinspection PhpUnusedParameterInspection */
-    function mb_strlen($str, $encoding): int
-    {
-        return strlen($str);
-    }
-    function mb_internal_encoding($encoding): void
-    {
-    }
-    function mb_strtolower($str): string
-    {
-        return strtolower($str);
-    }
-}
-
-/** @noinspection PhpUnhandledExceptionInspection */
+/**
+ * @return class-string[]
+ */
 function get_subclasses_of(string $parent): array
 {
     $result = [];
     foreach (get_declared_classes() as $class) {
-        $rclass = new ReflectionClass($class);
+        $rclass = new \ReflectionClass($class);
         if (!$rclass->isAbstract() && is_subclass_of($class, $parent)) {
             $result[] = $class;
         }
@@ -277,6 +254,8 @@ function get_subclasses_of(string $parent): array
 
 /**
  * Like glob, with support for matching very long patterns with braces.
+ *
+ * @return string[]
  */
 function zglob(string $pattern): array
 {
@@ -298,73 +277,6 @@ function zglob(string $pattern): array
     }
 }
 
-/**
- * Figure out the path to the shimmie install directory.
- *
- * eg if shimmie is visible at https://foo.com/gallery, this
- * function should return /gallery
- *
- * PHP really, really sucks.
- */
-function get_base_href(): string
-{
-    if (defined("BASE_HREF") && !empty(BASE_HREF)) {
-        return BASE_HREF;
-    }
-    $possible_vars = ['SCRIPT_NAME', 'PHP_SELF', 'PATH_INFO', 'ORIG_PATH_INFO'];
-    $ok_var = null;
-    foreach ($possible_vars as $var) {
-        if (isset($_SERVER[$var]) && substr($_SERVER[$var], -4) === '.php') {
-            $ok_var = $_SERVER[$var];
-            break;
-        }
-    }
-    assert(!empty($ok_var));
-    $dir = dirname($ok_var);
-    $dir = str_replace("\\", "/", $dir);
-    $dir = str_replace("//", "/", $dir);
-    $dir = rtrim($dir, "/");
-    return $dir;
-}
-
-/**
- * The opposite of the standard library's parse_url
- */
-function unparse_url(array $parsed_url): string
-{
-    $scheme   = isset($parsed_url['scheme']) ? $parsed_url['scheme'] . '://' : '';
-    $host     = isset($parsed_url['host']) ? $parsed_url['host'] : '';
-    $port     = isset($parsed_url['port']) ? ':' . $parsed_url['port'] : '';
-    $user     = isset($parsed_url['user']) ? $parsed_url['user'] : '';
-    $pass     = isset($parsed_url['pass']) ? ':' . $parsed_url['pass'] : '';
-    $pass     = ($user || $pass) ? "$pass@" : '';
-    $path     = isset($parsed_url['path']) ? $parsed_url['path'] : '';
-    $query    = !empty($parsed_url['query']) ? '?' . $parsed_url['query'] : '';
-    $fragment = !empty($parsed_url['fragment']) ? '#' . $parsed_url['fragment'] : '';
-    return "$scheme$user$pass$host$port$path$query$fragment";
-}
-
-# finally in the core library starting from php8
-if (!function_exists('str_starts_with')) {
-    function str_starts_with(string $haystack, string $needle): bool
-    {
-        return strncmp($haystack, $needle, strlen($needle)) === 0;
-    }
-}
-
-if (!function_exists('str_ends_with')) {
-    function str_ends_with(string $haystack, string $needle): bool
-    {
-        return $needle === '' || $needle === substr($haystack, - strlen($needle));
-    }
-}
-
-if (!function_exists('str_contains')) {
-    function str_contains(string $haystack, string $needle): bool
-    {
-        return '' === $needle || false !== strpos($haystack, $needle);
-    }
-}
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Input / Output Sanitising                                                 *
@@ -419,7 +331,7 @@ function url_escape(?string $input): string
 /**
  * Turn all manner of HTML / INI / JS / DB booleans into a PHP one
  */
-function bool_escape($input): bool
+function bool_escape(mixed $input): bool
 {
     /*
      Sometimes, I don't like PHP -- this, is one of those times...
@@ -462,7 +374,7 @@ function no_escape(string $input): string
  * Given a 1-indexed numeric-ish thing, return a zero-indexed
  * number between 0 and $max
  */
-function page_number(string $input, ?int $max=null): int
+function page_number(string $input, ?int $max = null): int
 {
     if (!is_numeric($input)) {
         $pageNumber = 0;
@@ -473,12 +385,25 @@ function page_number(string $input, ?int $max=null): int
     } else {
         $pageNumber = $input - 1;
     }
-    return $pageNumber;
+    return (int)$pageNumber;
 }
 
-function clamp(?int $val, ?int $min=null, ?int $max=null): int
+function is_numberish(string $s): bool
 {
-    if (!is_numeric($val) || (!is_null($min) && $val < $min)) {
+    return is_numeric($s);
+}
+
+/**
+ * Because apparently phpstan thinks that if $i is an int, type(-$i) == int|float
+ */
+function negative_int(int $i): int
+{
+    return -$i;
+}
+
+function clamp(int $val, ?int $min = null, ?int $max = null): int
+{
+    if (!is_null($min) && $val < $min) {
         $val = $min;
     }
     if (!is_null($max) && $val > $max) {
@@ -490,25 +415,26 @@ function clamp(?int $val, ?int $min=null, ?int $max=null): int
     return $val;
 }
 
-/**
- * Original PHP code by Chirp Internet: www.chirp.com.au
- * Please acknowledge use of this code by including this header.
- */
-function truncate(string $string, int $limit, string $break=" ", string $pad="..."): string
+function truncate(string $string, int $limit, string $break = " ", string $pad = "..."): string
 {
-    // return with no change if string is shorter than $limit
-    if (strlen($string) <= $limit) {
+    $e = "UTF-8";
+    $strlen = mb_strlen($string, $e);
+    $padlen = mb_strlen($pad, $e);
+    assert($limit > $padlen, "Can't truncate to a length less than the padding length");
+
+    // if string is shorter or equal to limit, leave it alone
+    if($strlen <= $limit) {
         return $string;
     }
 
-    // is $break present between $limit and the end of the string?
-    if (false !== ($breakpoint = strpos($string, $break, $limit))) {
-        if ($breakpoint < strlen($string) - 1) {
-            $string = substr($string, 0, $breakpoint) . $pad;
-        }
+    // if there is a break point between 0 and $limit, truncate to that
+    $breakpoint = mb_strrpos($string, $break, -($strlen - $limit + $padlen), $e);
+    if ($breakpoint !== false) {
+        return mb_substr($string, 0, $breakpoint, $e) . $pad;
     }
 
-    return $string;
+    // if there is no break point, cut mid-word
+    return mb_substr($string, 0, $limit - $padlen, $e) . $pad;
 }
 
 /**
@@ -517,19 +443,24 @@ function truncate(string $string, int $limit, string $break=" ", string $pad="..
 function parse_shorthand_int(string $limit): int
 {
     if (preg_match('/^([\d\.]+)([tgmk])?b?$/i', (string)$limit, $m)) {
-        $value = $m[1];
+        $value = (float)$m[1];
         if (isset($m[2])) {
             switch (strtolower($m[2])) {
                 /** @noinspection PhpMissingBreakStatementInspection */
-                case 't': $value *= 1024;  // fall through
-                /** @noinspection PhpMissingBreakStatementInspection */
-                // no break
-                case 'g': $value *= 1024;  // fall through
-                /** @noinspection PhpMissingBreakStatementInspection */
-                // no break
-                case 'm': $value *= 1024;  // fall through
-                // no break
-                case 'k': $value *= 1024; break;
+                case 't':
+                    $value *= 1024;  // fall through
+                    /** @noinspection PhpMissingBreakStatementInspection */
+                    // no break
+                case 'g':
+                    $value *= 1024;  // fall through
+                    /** @noinspection PhpMissingBreakStatementInspection */
+                    // no break
+                case 'm':
+                    $value *= 1024;  // fall through
+                    // no break
+                case 'k':
+                    $value *= 1024;
+                    break;
                 default: $value = -1;
             }
         }
@@ -542,21 +473,21 @@ function parse_shorthand_int(string $limit): int
 /**
  * Turn an integer into a human readable filesize, eg 1024 -> 1KB
  */
-function to_shorthand_int(int $int): string
+function to_shorthand_int(int|float $int): string
 {
     assert($int >= 0);
 
-    if ($int >= pow(1024, 4)) {
-        return sprintf("%.1fTB", $int / pow(1024, 4));
-    } elseif ($int >= pow(1024, 3)) {
-        return sprintf("%.1fGB", $int / pow(1024, 3));
-    } elseif ($int >= pow(1024, 2)) {
-        return sprintf("%.1fMB", $int / pow(1024, 2));
-    } elseif ($int >= 1024) {
-        return sprintf("%.1fKB", $int / 1024);
-    } else {
-        return (string)$int;
-    }
+    return match (true) {
+        $int >= pow(1024, 4) * 10 => sprintf("%.0fTB", $int / pow(1024, 4)),
+        $int >= pow(1024, 4) => sprintf("%.1fTB", $int / pow(1024, 4)),
+        $int >= pow(1024, 3) * 10 => sprintf("%.0fGB", $int / pow(1024, 3)),
+        $int >= pow(1024, 3) => sprintf("%.1fGB", $int / pow(1024, 3)),
+        $int >= pow(1024, 2) * 10 => sprintf("%.0fMB", $int / pow(1024, 2)),
+        $int >= pow(1024, 2) => sprintf("%.1fMB", $int / pow(1024, 2)),
+        $int >= pow(1024, 1) * 10 => sprintf("%.0fKB", $int / pow(1024, 1)),
+        $int >= pow(1024, 1) => sprintf("%.1fKB", $int / pow(1024, 1)),
+        default => (string)$int,
+    };
 }
 abstract class TIME_UNITS
 {
@@ -567,12 +498,12 @@ abstract class TIME_UNITS
     public const DAYS = "d";
     public const YEARS = "y";
     public const CONVERSION = [
-        self::MILLISECONDS=>1000,
-        self::SECONDS=>60,
-        self::MINUTES=>60,
-        self::HOURS=>24,
-        self::DAYS=>365,
-        self::YEARS=>PHP_INT_MAX
+        self::MILLISECONDS => 1000,
+        self::SECONDS => 60,
+        self::MINUTES => 60,
+        self::HOURS => 24,
+        self::DAYS => 365,
+        self::YEARS => PHP_INT_MAX
     ];
 }
 function format_milliseconds(int $input, string $min_unit = TIME_UNITS::SECONDS): string
@@ -583,17 +514,17 @@ function format_milliseconds(int $input, string $min_unit = TIME_UNITS::SECONDS)
 
     $found = false;
 
-    foreach (TIME_UNITS::CONVERSION as $unit=>$conversion) {
+    foreach (TIME_UNITS::CONVERSION as $unit => $conversion) {
         $count = $remainder % $conversion;
         $remainder = floor($remainder / $conversion);
 
-        if ($found||$unit==$min_unit) {
+        if ($found || $unit == $min_unit) {
             $found = true;
         } else {
             continue;
         }
 
-        if ($count==0&&$remainder<1) {
+        if ($count == 0 && $remainder < 1) {
             break;
         }
         $output = "$count".$unit." ".$output;
@@ -614,7 +545,7 @@ function parse_to_milliseconds(string $input): int
             $output += $length;
         }
     } else {
-        foreach (TIME_UNITS::CONVERSION as $unit=>$conversion) {
+        foreach (TIME_UNITS::CONVERSION as $unit => $conversion) {
             if (preg_match('/([0-9]+)'.$unit.'/i', $input, $match)) {
                 $length = $match[1];
                 if (is_numeric($length)) {
@@ -631,10 +562,10 @@ function parse_to_milliseconds(string $input): int
 /**
  * Turn a date into a time, a date, an "X minutes ago...", etc
  */
-function autodate(string $date, bool $html=true): string
+function autodate(string $date, bool $html = true): string
 {
-    $cpu = date('c', strtotime($date));
-    $hum = date('F j, Y; H:i', strtotime($date));
+    $cpu = date('c', \Safe\strtotime($date));
+    $hum = date('F j, Y; H:i', \Safe\strtotime($date));
     return ($html ? "<time datetime='$cpu'>$hum</time>" : $hum);
 }
 
@@ -667,6 +598,10 @@ function isValidDate(string $date): bool
     return false;
 }
 
+/**
+ * @param array<string, string> $inputs
+ * @return array<string, mixed>
+ */
 function validate_input(array $inputs): array
 {
     $outputs = [];
@@ -699,6 +634,7 @@ function validate_input(array $inputs): array
             }
             $outputs[$key] = $id;
         } elseif (in_array('user_name', $flags)) {
+            // @phpstan-ignore-next-line - phpstan thinks $value can never be empty?
             if (strlen($value) < 1) {
                 throw new InvalidInput("Username must be at least 1 character");
             } elseif (!preg_match('/^[a-zA-Z0-9-_]+$/', $value)) {
@@ -709,8 +645,7 @@ function validate_input(array $inputs): array
             }
             $outputs[$key] = $value;
         } elseif (in_array('user_class', $flags)) {
-            global $_shm_user_classes;
-            if (!array_key_exists($value, $_shm_user_classes)) {
+            if (!array_key_exists($value, UserClass::$known_classes)) {
                 throw new InvalidInput("Invalid user class: ".html_escape($value));
             }
             $outputs[$key] = $value;
@@ -727,7 +662,7 @@ function validate_input(array $inputs): array
         } elseif (in_array('bool', $flags)) {
             $outputs[$key] = bool_escape($value);
         } elseif (in_array('date', $flags)) {
-            $outputs[$key] = date("Y-m-d H:i:s", strtotime(trim($value)));
+            $outputs[$key] = date("Y-m-d H:i:s", \Safe\strtotime(trim($value)));
         } elseif (in_array('string', $flags)) {
             if (in_array('trim', $flags)) {
                 $value = trim($value);
@@ -786,8 +721,14 @@ function join_path(string ...$paths): string
 
 /**
  * Perform callback on each item returned by an iterator.
+ *
+ * @template T
+ * @template U
+ * @param callable(U):T $callback
+ * @param \iterator<U> $iter
+ * @return \Generator<T>
  */
-function iterator_map(callable $callback, iterator $iter): Generator
+function iterator_map(callable $callback, \iterator $iter): \Generator
 {
     foreach ($iter as $i) {
         yield call_user_func($callback, $i);
@@ -796,27 +737,66 @@ function iterator_map(callable $callback, iterator $iter): Generator
 
 /**
  * Perform callback on each item returned by an iterator and combine the result into an array.
+ *
+ * @template T
+ * @template U
+ * @param callable(U):T $callback
+ * @param \iterator<U> $iter
+ * @return array<T>
  */
-function iterator_map_to_array(callable $callback, iterator $iter): array
+function iterator_map_to_array(callable $callback, \iterator $iter): array
 {
     return iterator_to_array(iterator_map($callback, $iter));
 }
 
-function stringer($s): string
+function stringer(mixed $s): string
 {
     if (is_array($s)) {
         if (isset($s[0])) {
-            return "[" . implode(", ", array_map("stringer", $s)) . "]";
+            return "[" . implode(", ", array_map("Shimmie2\stringer", $s)) . "]";
         } else {
             $pairs = [];
-            foreach ($s as $k=>$v) {
+            foreach ($s as $k => $v) {
                 $pairs[] = "\"$k\"=>" . stringer($v);
             }
             return "[" . implode(", ", $pairs) . "]";
         }
     }
+    if (is_null($s)) {
+        return "null";
+    }
     if (is_string($s)) {
         return "\"$s\"";  // FIXME: handle escaping quotes
     }
-    return (string)$s;
+    if (is_numeric($s)) {
+        return "$s";
+    }
+    if (is_bool($s)) {
+        return $s ? "true" : "false";
+    }
+    if (method_exists($s, "__toString")) {
+        return $s->__toString();
+    }
+    return "<Unstringable>";
+}
+
+/**
+ * If a value is in the cache, return it; otherwise, call the callback
+ * to generate it and store it in the cache.
+ *
+ * @template T
+ * @param string $key
+ * @param callable():T $callback
+ * @param int|null $ttl
+ * @return T
+ */
+function cache_get_or_set(string $key, callable $callback, ?int $ttl = null): mixed
+{
+    global $cache;
+    $value = $cache->get($key);
+    if ($value === null) {
+        $value = $callback();
+        $cache->set($key, $value, $ttl);
+    }
+    return $value;
 }

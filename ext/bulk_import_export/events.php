@@ -2,9 +2,12 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class BulkExportEvent extends Event
 {
     public Image $image;
+    /** @var array<string,mixed> */
     public array $fields = [];
 
     public function __construct(Image $image)
@@ -18,9 +21,13 @@ class BulkExportEvent extends Event
 class BulkImportEvent extends Event
 {
     public Image $image;
+    /** @var array<string,mixed> */
     public array $fields = [];
 
-    public function __construct(Image $image, $fields)
+    /**
+     * @param array<string,mixed> $fields
+     */
+    public function __construct(Image $image, array $fields)
     {
         parent::__construct();
         $this->image = $image;

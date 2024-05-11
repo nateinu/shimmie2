@@ -1,16 +1,19 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class AutoTaggerTest extends ShimmiePHPUnitTestCase
 {
-    public function testAutoTaggerList()
+    public function testAutoTaggerList(): void
     {
         $this->get_page('auto_tag/list');
         $this->assert_response(200);
         $this->assert_title("Auto-Tag");
     }
 
-    public function testAutoTaggerListReadOnly()
+    public function testAutoTaggerListReadOnly(): void
     {
         $this->log_in_as_user();
         $this->get_page('auto_tag/list');
@@ -23,7 +26,7 @@ class AutoTaggerTest extends ShimmiePHPUnitTestCase
         $this->assert_no_text("value=\"Add\"");
     }
 
-    public function testAutoTagger()
+    public function testAutoTagger(): void
     {
         $this->log_in_as_admin();
 

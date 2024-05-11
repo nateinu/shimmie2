@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 /**
  * Class Extension
  *
@@ -16,36 +19,39 @@ declare(strict_types=1);
 abstract class Extension
 {
     public string $key;
-    protected ?Themelet $theme;
-    public ?ExtensionInfo $info;
+    protected Themelet $theme;
+    public ExtensionInfo $info;
 
+    /** @var string[] */
     private static array $enabled_extensions = [];
 
-    public function __construct($class = null)
+    public function __construct(?string $class = null)
     {
         $class = $class ?? get_called_class();
         $this->theme = $this->get_theme_object($class);
         $this->info = ExtensionInfo::get_for_extension_class($class);
-        if ($this->info===null) {
-            throw new ScoreException("Info class not found for extension $class");
-        }
         $this->key = $this->info->key;
     }
 
     /**
      * Find the theme object for a given extension.
      */
-    private function get_theme_object(string $base): ?Themelet
+    private function get_theme_object(string $base): Themelet
     {
-        $custom = 'Custom'.$base.'Theme';
-        $normal = $base.'Theme';
+        $base = str_replace("Shimmie2\\", "", $base);
+        $custom = "Shimmie2\Custom{$base}Theme";
+        $normal = "Shimmie2\\{$base}Theme";
 
         if (class_exists($custom)) {
-            return new $custom();
+            $c = new $custom();
+            assert(is_a($c, Themelet::class));
+            return $c;
         } elseif (class_exists($normal)) {
-            return new $normal();
+            $n = new $normal();
+            assert(is_a($n, Themelet::class));
+            return $n;
         } else {
-            return null;
+            return new Themelet();
         }
     }
 
@@ -61,12 +67,14 @@ abstract class Extension
     public static function determine_enabled_extensions(): void
     {
         self::$enabled_extensions = [];
+        $extras = defined("EXTRA_EXTS") ? explode(",", EXTRA_EXTS) : [];
+
         foreach (array_merge(
             ExtensionInfo::get_core_extensions(),
-            explode(",", EXTRA_EXTS)
+            $extras
         ) as $key) {
             $ext = ExtensionInfo::get_by_key($key);
-            if ($ext===null || !$ext->is_supported()) {
+            if ($ext === null || !$ext->is_supported()) {
                 continue;
             }
             // FIXME: error if one of our dependencies isn't supported
@@ -79,11 +87,14 @@ abstract class Extension
         }
     }
 
-    public static function is_enabled(string $key): ?bool
+    public static function is_enabled(string $key): bool
     {
         return in_array($key, self::$enabled_extensions);
     }
 
+    /**
+     * @return string[]
+     */
     public static function get_enabled_extensions(): array
     {
         return self::$enabled_extensions;
@@ -99,12 +110,35 @@ abstract class Extension
         return $config->get_int($name, 0);
     }
 
-    protected function set_version(string $name, int $ver)
+    protected function set_version(string $name, int $ver): void
     {
         global $config;
         $config->set_int($name, $ver);
         log_info("upgrade", "Set version for $name to $ver");
     }
+}
+
+class ExtensionNotFound extends SCoreException
+{
+}
+
+enum ExtensionVisibility
+{
+    case DEFAULT;
+    case ADMIN;
+    case HIDDEN;
+}
+
+enum ExtensionCategory: string
+{
+    case GENERAL = "General";
+    case ADMIN = "Admin";
+    case MODERATION = "Moderation";
+    case FILE_HANDLING = "File Handling";
+    case OBSERVABILITY = "Observability";
+    case INTEGRATION = "Integration";
+    case FEATURE = "Feature";
+    case METADATA = "Metadata";
 }
 
 abstract class ExtensionInfo
@@ -113,16 +147,11 @@ abstract class ExtensionInfo
     public const SHISH_NAME = "Shish";
     public const SHISH_EMAIL = "webmaster@shishnet.org";
     public const SHIMMIE_URL = "https://code.shishnet.org/shimmie2/";
-    public const SHISH_AUTHOR = [self::SHISH_NAME=>self::SHISH_EMAIL];
+    public const SHISH_AUTHOR = [self::SHISH_NAME => self::SHISH_EMAIL];
 
     public const LICENSE_GPLV2 = "GPLv2";
     public const LICENSE_MIT = "MIT";
     public const LICENSE_WTFPL = "WTFPL";
-
-    public const VISIBLE_DEFAULT = "default";
-    public const VISIBLE_ADMIN = "admin";
-    public const VISIBLE_HIDDEN = "hidden";
-    private const VALID_VISIBILITY = [self::VISIBLE_DEFAULT, self::VISIBLE_ADMIN, self::VISIBLE_HIDDEN];
 
     public string $key;
 
@@ -132,22 +161,25 @@ abstract class ExtensionInfo
     public string $name;
     public string $license;
     public string $description;
+    /** @var array<string, string|null> */
     public array $authors = [];
+    /** @var string[] */
     public array $dependencies = [];
+    /** @var string[] */
     public array $conflicts = [];
-    public string $visibility = self::VISIBLE_DEFAULT;
+    public ExtensionVisibility $visibility = ExtensionVisibility::DEFAULT;
+    public ExtensionCategory $category = ExtensionCategory::GENERAL;
     public ?string $link = null;
-    public ?string $version = null;
     public ?string $documentation = null;
 
-    /** @var string[] which DBs this ext supports (blank for 'all') */
+    /** @var DatabaseDriverID[] which DBs this ext supports (blank for 'all') */
     public array $db_support = [];
     private ?bool $supported = null;
     private ?string $support_info = null;
 
     public function is_supported(): bool
     {
-        if ($this->supported===null) {
+        if ($this->supported === null) {
             $this->check_support();
         }
         return $this->supported;
@@ -155,21 +187,23 @@ abstract class ExtensionInfo
 
     public function get_support_info(): string
     {
-        if ($this->supported===null) {
+        if ($this->supported === null) {
             $this->check_support();
         }
         return $this->support_info;
     }
 
+    /** @var array<string, ExtensionInfo> */
     private static array $all_info_by_key = [];
+    /** @var array<string, ExtensionInfo> */
     private static array $all_info_by_class = [];
+    /** @var string[] */
     private static array $core_extensions = [];
 
     protected function __construct()
     {
         assert(!empty($this->key), "key field is required");
         assert(!empty($this->name), "name field is required for extension $this->key");
-        assert(empty($this->visibility) || in_array($this->visibility, self::VALID_VISIBILITY), "Invalid visibility for extension $this->key");
         assert(is_array($this->db_support), "db_support has to be an array for extension $this->key");
         assert(is_array($this->authors), "authors has to be an array for extension $this->key");
         assert(is_array($this->dependencies), "dependencies has to be an array for extension $this->key");
@@ -180,11 +214,11 @@ abstract class ExtensionInfo
         return Extension::is_enabled($this->key);
     }
 
-    private function check_support()
+    private function check_support(): void
     {
         global $database;
         $this->support_info  = "";
-        if (!empty($this->db_support) && !in_array($database->get_driver_name(), $this->db_support)) {
+        if (!empty($this->db_support) && !in_array($database->get_driver_id(), $this->db_support)) {
             $this->support_info .= "Database not supported. ";
         }
         if (!empty($this->conflicts)) {
@@ -199,16 +233,25 @@ abstract class ExtensionInfo
         $this->supported = empty($this->support_info);
     }
 
+    /**
+     * @return ExtensionInfo[]
+     */
     public static function get_all(): array
     {
         return array_values(self::$all_info_by_key);
     }
 
+    /**
+     * @return string[]
+     */
     public static function get_all_keys(): array
     {
         return array_keys(self::$all_info_by_key);
     }
 
+    /**
+     * @return string[]
+     */
     public static function get_core_extensions(): array
     {
         return self::$core_extensions;
@@ -223,28 +266,30 @@ abstract class ExtensionInfo
         }
     }
 
-    public static function get_for_extension_class(string $base): ?ExtensionInfo
+    public static function get_for_extension_class(string $base): ExtensionInfo
     {
-        $normal = $base.'Info';
+        $normal = "{$base}Info";
 
         if (array_key_exists($normal, self::$all_info_by_class)) {
             return self::$all_info_by_class[$normal];
         } else {
-            return null;
+            $infos = print_r(array_keys(self::$all_info_by_class), true);
+            throw new ExtensionNotFound("$normal not found in {$infos}");
         }
     }
 
-    public static function load_all_extension_info()
+    public static function load_all_extension_info(): void
     {
-        foreach (get_subclasses_of("ExtensionInfo") as $class) {
+        foreach (get_subclasses_of(ExtensionInfo::class) as $class) {
             $extension_info = new $class();
+            assert(is_a($extension_info, ExtensionInfo::class));
             if (array_key_exists($extension_info->key, self::$all_info_by_key)) {
-                throw new ScoreException("Extension Info $class with key $extension_info->key has already been loaded");
+                throw new ServerError("Extension Info $class with key $extension_info->key has already been loaded");
             }
 
             self::$all_info_by_key[$extension_info->key] = $extension_info;
             self::$all_info_by_class[$class] = $extension_info;
-            if ($extension_info->core===true) {
+            if ($extension_info->core === true) {
                 self::$core_extensions[] = $extension_info->key;
             }
         }
@@ -258,7 +303,7 @@ abstract class ExtensionInfo
  */
 abstract class FormatterExtension extends Extension
 {
-    public function onTextFormatting(TextFormattingEvent $event)
+    public function onTextFormatting(TextFormattingEvent $event): void
     {
         $event->formatted = $this->format($event->formatted);
         $event->stripped  = $this->strip($event->stripped);
@@ -276,109 +321,82 @@ abstract class FormatterExtension extends Extension
  */
 abstract class DataHandlerExtension extends Extension
 {
+    /** @var string[] */
     protected array $SUPPORTED_MIME = [];
 
-    protected function move_upload_to_archive(DataUploadEvent $event)
+    public function onDataUpload(DataUploadEvent $event): void
     {
-        $target = warehouse_path(Image::IMAGE_DIR, $event->hash);
-        if (!@copy($event->tmpname, $target)) {
-            $errors = error_get_last();
-            throw new UploadException(
-                "Failed to copy file from uploads ({$event->tmpname}) to archive ($target): ".
-                "{$errors['type']} / {$errors['message']}"
-            );
-        }
-    }
+        global $config;
 
-    public function onDataUpload(DataUploadEvent $event)
-    {
-        $supported_mime = $this->supported_mime($event->mime);
-        $check_contents = $this->check_contents($event->tmpname);
-        if ($supported_mime && $check_contents) {
-            $this->move_upload_to_archive($event);
-            send_event(new ThumbnailGenerationEvent($event->hash, $event->mime));
+        if ($this->supported_mime($event->mime)) {
+            if (!$this->check_contents($event->tmpname)) {
+                // We DO support this extension - but the file looks corrupt
+                throw new UploadException("Invalid or corrupted file");
+            }
 
-            /* Check if we are replacing an image */
-            if (!is_null($event->replace_id)) {
-                /* hax: This seems like such a dirty way to do this.. */
-
-                /* Check to make sure the image exists. */
-                $existing = Image::by_id($event->replace_id);
-
-                if (is_null($existing)) {
-                    throw new UploadException("Post to replace does not exist!");
-                }
-                if ($existing->hash === $event->metadata['hash']) {
-                    throw new UploadException("The uploaded post is the same as the one to replace.");
-                }
-
-                // even more hax..
-                $event->metadata['tags'] = $existing->get_tag_list();
-                $image = $this->create_image_from_data(warehouse_path(Image::IMAGE_DIR, $event->metadata['hash']), $event->metadata);
-                if (is_null($image)) {
-                    throw new UploadException("Data handler failed to create post object from data");
-                }
-                if (empty($image->get_mime())) {
-                    throw new UploadException("Unable to determine MIME for ". $event->tmpname);
-                }
-                try {
-                    send_event(new MediaCheckPropertiesEvent($image));
-                } catch (MediaException $e) {
-                    throw new UploadException("Unable to scan media properties: ".$e->getMessage());
-                }
-
-                send_event(new ImageReplaceEvent($event->replace_id, $image));
-                $_id = $event->replace_id;
-                assert(!is_null($_id));
-                $event->image_id = $_id;
-            } else {
-                $image = $this->create_image_from_data(warehouse_path(Image::IMAGE_DIR, $event->hash), $event->metadata);
-                if (is_null($image)) {
-                    throw new UploadException("Data handler failed to create post object from data");
-                }
-                if (empty($image->get_mime())) {
-                    throw new UploadException("Unable to determine MIME for ". $event->tmpname);
-                }
-                try {
-                    send_event(new MediaCheckPropertiesEvent($image));
-                } catch (MediaException $e) {
-                    throw new UploadException("Unable to scan media properties: ".$e->getMessage());
-                }
-
-                $iae = send_event(new ImageAdditionEvent($image));
-                $event->image_id = $iae->image->id;
-                $event->merged = $iae->merged;
-
-                // Rating Stuff.
-                if (!empty($event->metadata['rating'])) {
-                    $rating = $event->metadata['rating'];
-                    send_event(new RatingSetEvent($image, $rating));
-                }
-
-                // Locked Stuff.
-                if (!empty($event->metadata['locked'])) {
-                    $locked = $event->metadata['locked'];
-                    send_event(new LockSetEvent($image, !empty($locked)));
+            $existing = Image::by_hash(\Safe\md5_file($event->tmpname));
+            if (!is_null($existing)) {
+                if ($config->get_string(ImageConfig::UPLOAD_COLLISION_HANDLER) == ImageConfig::COLLISION_MERGE) {
+                    // Right now tags are the only thing that get merged, so
+                    // we can just send a TagSetEvent - in the future we might
+                    // want a dedicated MergeEvent?
+                    if(!empty($event->metadata['tags'])) {
+                        $tags = Tag::explode($existing->get_tag_list() . " " . $event->metadata['tags']);
+                        send_event(new TagSetEvent($existing, $tags));
+                    }
+                    $event->images[] = $existing;
+                    return;
+                } else {
+                    throw new UploadException(">>{$existing->id} already has hash {$existing->hash}");
                 }
             }
-        } elseif ($supported_mime && !$check_contents) {
-            // We DO support this extension - but the file looks corrupt
-            throw new UploadException("Invalid or corrupted file");
+
+            // Create a new Image object
+            $filename = $event->tmpname;
+            assert(is_readable($filename));
+            $image = new Image();
+            $image->tmp_file = $filename;
+            $image->filesize = \Safe\filesize($filename);
+            $image->hash = \Safe\md5_file($filename);
+            // DB limits to 255 char filenames
+            $image->filename = substr($event->filename, -250);
+            $image->set_mime($event->mime);
+            try {
+                send_event(new MediaCheckPropertiesEvent($image));
+            } catch (MediaException $e) {
+                throw new UploadException("Unable to scan media properties $filename / $image->filename / $image->hash: ".$e->getMessage());
+            }
+            $image->save_to_db(); // Ensure the image has a DB-assigned ID
+
+            $iae = send_event(new ImageAdditionEvent($image));
+            send_event(new ImageInfoSetEvent($image, $event->slot, $event->metadata));
+
+            // If everything is OK, then move the file to the archive
+            $filename = warehouse_path(Image::IMAGE_DIR, $event->hash);
+            if (!@copy($event->tmpname, $filename)) {
+                $errors = error_get_last();
+                throw new UploadException(
+                    "Failed to copy file from uploads ({$event->tmpname}) to archive ($filename): ".
+                    "{$errors['type']} / {$errors['message']}"
+                );
+            }
+
+            $event->images[] = $iae->image;
         }
     }
 
-    public function onThumbnailGeneration(ThumbnailGenerationEvent $event)
+    public function onThumbnailGeneration(ThumbnailGenerationEvent $event): void
     {
         $result = false;
-        if ($this->supported_mime($event->mime)) {
+        if ($this->supported_mime($event->image->get_mime())) {
             if ($event->force) {
-                $result = $this->create_thumb($event->hash, $event->mime);
+                $result = $this->create_thumb($event->image);
             } else {
-                $outname = warehouse_path(Image::THUMBNAIL_DIR, $event->hash);
+                $outname = $event->image->get_thumb_filename();
                 if (file_exists($outname)) {
                     return;
                 }
-                $result = $this->create_thumb($event->hash, $event->mime);
+                $result = $this->create_thumb($event->image);
             }
         }
         if ($result) {
@@ -386,61 +404,48 @@ abstract class DataHandlerExtension extends Extension
         }
     }
 
-    public function onDisplayingImage(DisplayingImageEvent $event)
+    public function onDisplayingImage(DisplayingImageEvent $event): void
     {
-        global $page;
+        global $config, $page;
         if ($this->supported_mime($event->image->get_mime())) {
-            /** @noinspection PhpPossiblePolymorphicInvocationInspection */
-            $this->theme->display_image($page, $event->image);
+            // @phpstan-ignore-next-line
+            $this->theme->display_image($event->image);
+            if ($config->get_bool(ImageConfig::SHOW_META) && method_exists($this->theme, "display_metadata")) {
+                $this->theme->display_metadata($event->image);
+            }
         }
     }
 
-    public function onMediaCheckProperties(MediaCheckPropertiesEvent $event)
+    public function onMediaCheckProperties(MediaCheckPropertiesEvent $event): void
     {
-        if ($this->supported_mime($event->mime)) {
+        if ($this->supported_mime($event->image->get_mime())) {
             $this->media_check_properties($event);
         }
     }
 
-    protected function create_image_from_data(string $filename, array $metadata): Image
-    {
-        $image = new Image();
-
-        $image->filesize = $metadata['size'];
-        $image->hash = $metadata['hash'];
-        $image->filename = (($pos = strpos($metadata['filename'], '?')) !== false) ? substr($metadata['filename'], 0, $pos) : $metadata['filename'];
-
-        if (array_key_exists("extension", $metadata)) {
-            $image->set_mime(MimeType::get_for_file($filename, $metadata["extension"]));
-        } else {
-            $image->set_mime(MimeType::get_for_file($filename));
-        }
-
-        $image->tag_array = is_array($metadata['tags']) ? $metadata['tags'] : Tag::explode($metadata['tags']);
-        $image->source = $metadata['source'];
-
-        return $image;
-    }
-
     abstract protected function media_check_properties(MediaCheckPropertiesEvent $event): void;
     abstract protected function check_contents(string $tmpname): bool;
-    abstract protected function create_thumb(string $hash, string $mime): bool;
+    abstract protected function create_thumb(Image $image): bool;
 
     protected function supported_mime(string $mime): bool
     {
         return MimeType::matches_array($mime, $this->SUPPORTED_MIME);
     }
 
+    /**
+     * @return string[]
+     */
     public static function get_all_supported_mimes(): array
     {
         $arr = [];
-        foreach (get_subclasses_of("DataHandlerExtension") as $handler) {
+        foreach (get_subclasses_of(DataHandlerExtension::class) as $handler) {
             $handler = (new $handler());
+            assert(is_a($handler, DataHandlerExtension::class));
             $arr = array_merge($arr, $handler->SUPPORTED_MIME);
         }
 
         // Not sure how to handle this otherwise, don't want to set up a whole other event for this one class
-        if (class_exists("TranscodeImage")) {
+        if (Extension::is_enabled(TranscodeImageInfo::KEY)) {
             $arr = array_merge($arr, TranscodeImage::get_enabled_mimes());
         }
 
@@ -448,6 +453,9 @@ abstract class DataHandlerExtension extends Extension
         return $arr;
     }
 
+    /**
+     * @return string[]
+     */
     public static function get_all_supported_exts(): array
     {
         $arr = [];

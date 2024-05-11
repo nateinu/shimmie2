@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 require_once "file_extension.php";
 
 class MimeType
@@ -78,10 +80,10 @@ class MimeType
 
     public static function is_mime(string $value): bool
     {
-        return preg_match(self::REGEX_MIME_TYPE, $value)===1;
+        return preg_match(self::REGEX_MIME_TYPE, $value) === 1;
     }
 
-    public static function add_parameters(String $mime, String...$parameters): string
+    public static function add_parameters(string $mime, string ...$parameters): string
     {
         if (empty($parameters)) {
             return $mime;
@@ -92,12 +94,15 @@ class MimeType
     public static function remove_parameters(string $mime): string
     {
         $i = strpos($mime, ";");
-        if ($i!==false) {
+        if ($i !== false) {
             return substr($mime, 0, $i);
         }
         return $mime;
     }
 
+    /**
+     * @param array<string> $mime_array
+     */
     public static function matches_array(string $mime, array $mime_array, bool $exact = false): bool
     {
         // If there's an exact match, find it and that's it
@@ -119,14 +124,14 @@ class MimeType
             $mime1 = self::remove_parameters($mime1);
             $mime2 = self::remove_parameters($mime2);
         }
-        return strtolower($mime1)===strtolower($mime2);
+        return strtolower($mime1) === strtolower($mime2);
     }
 
 
     /**
      * Determines if a file is an animated gif.
      *
-     * @param String $image_filename The path of the file to check.
+     * @param string $image_filename The path of the file to check.
      * @return bool true if the file is an animated gif, false if it is not.
      */
     public static function is_animated_gif(string $image_filename): bool
@@ -145,25 +150,29 @@ class MimeType
                 @fclose($fh);
             }
         }
-        return ($is_anim_gif >=2);
+        return ($is_anim_gif >= 2);
     }
 
 
+    /**
+     * @param array<int|null> $comparison
+     */
     private static function compare_file_bytes(string $file_name, array $comparison): bool
     {
-        $size = filesize($file_name);
-        if ($size < count($comparison)) {
+        $size = \Safe\filesize($file_name);
+        $cc = count($comparison);
+        if ($size < $cc) {
             // Can't match because it's too small
             return false;
         }
 
         if (($fh = @fopen($file_name, 'rb'))) {
             try {
-                $chunk = unpack("C*", fread($fh, count($comparison)));
+                $chunk = \Safe\unpack("C*", \Safe\fread($fh, $cc));
 
-                for ($i = 0; $i < count($comparison); $i++) {
+                for ($i = 0; $i < $cc; $i++) {
                     $byte = $comparison[$i];
-                    if ($byte == null) {
+                    if ($byte === null) {
                         continue;
                     } else {
                         $fileByte = $chunk[$i + 1];
@@ -199,11 +208,11 @@ class MimeType
     public static function get_for_extension(string $ext): ?string
     {
         $data = MimeMap::get_for_extension($ext);
-        if ($data!=null) {
+        if ($data != null) {
             return $data[MimeMap::MAP_MIME][0];
         }
         // This was an old solution for differentiating lossless webps
-        if ($ext==="webp-lossless") {
+        if ($ext === "webp-lossless") {
             return MimeType::WEBP_LOSSLESS;
         }
         return null;
@@ -211,23 +220,20 @@ class MimeType
 
     /**
      * Returns the mimetype for the specified file via file inspection
-     * @param String $file
-     * @return String The mimetype that was found. Returns generic octet binary mimetype if not found.
+     * @param string $file
+     * @return string The mimetype that was found. Returns generic octet binary mimetype if not found.
      */
     public static function get_for_file(string $file, ?string $ext = null): string
     {
         if (!file_exists($file)) {
-            throw new SCoreException("File not found: ".$file);
+            throw new UserError("File not found: ".$file);
         }
 
         $output = self::OCTET_STREAM;
 
-        $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        try {
-            $type = finfo_file($finfo, $file);
-        } finally {
-            finfo_close($finfo);
-        }
+        $finfo = false_throws(finfo_open(FILEINFO_MIME_TYPE));
+        $type = finfo_file($finfo, $file);
+        finfo_close($finfo);
 
         if ($type !== false && !empty($type)) {
             $output = $type;
@@ -236,10 +242,10 @@ class MimeType
         if (!empty($ext)) {
             // Here we handle the few file types that need extension-based handling
             $ext = strtolower($ext);
-            if ($type===MimeType::ZIP && $ext===FileExtension::CBZ) {
+            if ($type === MimeType::ZIP && $ext === FileExtension::CBZ) {
                 $output = MimeType::COMIC_ZIP;
             }
-            if ($type===MimeType::OCTET_STREAM) {
+            if ($type === MimeType::OCTET_STREAM) {
                 switch ($ext) {
                     case FileExtension::ANI:
                         $output = MimeType::ANI;
@@ -247,10 +253,12 @@ class MimeType
                     case FileExtension::PPM:
                         $output = MimeType::PPM;
                         break;
-// TODO: There is no uniquely defined Mime type for the cursor format. Need to figure this out.
-//                    case FileExtension::CUR:
-//                        $output = MimeType::CUR;
-//                        break;
+                        // TODO: There is no uniquely defined Mime type for the cursor format. Need to figure this out.
+                        /*
+                        case FileExtension::CUR:
+                            $output = MimeType::CUR;
+                            break;
+                        */
                 }
             }
         }

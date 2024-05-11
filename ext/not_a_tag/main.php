@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 use MicroCRUD\ActionColumn;
 use MicroCRUD\TextColumn;
 use MicroCRUD\Table;
@@ -24,21 +26,18 @@ class NotATagTable extends Table
         $this->order_by = ["tag", "redirect"];
         $this->create_url = make_link("untag/add");
         $this->delete_url = make_link("untag/remove");
-        $this->table_attrs = ["class" => "zebra"];
+        $this->table_attrs = ["class" => "zebra form"];
     }
 }
 
 class NotATag extends Extension
 {
-    /** @var NotATagTheme */
-    protected ?Themelet $theme;
-
     public function get_priority(): int
     {
         return 30;
     } // before ImageUploadEvent and tag_history
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
         if ($this->get_version("ext_notatag_version") < 1) {
@@ -50,25 +49,20 @@ class NotATag extends Extension
         }
     }
 
-    public function onImageAddition(ImageAdditionEvent $event)
-    {
-        $this->scan($event->image->get_tag_array());
-    }
-
-    public function onTagSet(TagSetEvent $event)
+    public function onTagSet(TagSetEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::BAN_IMAGE)) {
-            $event->tags = $this->strip($event->tags);
+            $event->new_tags = $this->strip($event->new_tags);
         } else {
-            $this->scan($event->tags);
+            $this->scan($event->new_tags);
         }
     }
 
     /**
-     * #param string[] $tags_mixed
+     * @param string[] $tags_mixed
      */
-    private function scan(array $tags_mixed)
+    private function scan(array $tags_mixed): void
     {
         global $database;
 
@@ -88,7 +82,8 @@ class NotATag extends Extension
     }
 
     /**
-     * #param string[] $tags
+     * @param string[] $tags
+     * @return string[]
      */
     private function strip(array $tags): array
     {
@@ -109,56 +104,52 @@ class NotATag extends Extension
         return $ok_tags;
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent==="tags") {
+        if ($event->parent === "tags") {
             if ($user->can(Permissions::BAN_IMAGE)) {
-                $event->add_nav_link("untags", new Link('untag/list/1'), "UnTags");
+                $event->add_nav_link("untags", new Link('untag/list'), "UnTags");
             }
         }
     }
 
-    public function onUserBlockBuilding(UserBlockBuildingEvent $event)
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::BAN_IMAGE)) {
-            $event->add_link("UnTags", make_link("untag/list/1"));
+            $event->add_link("UnTags", make_link("untag/list"));
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $database, $page, $user;
 
-        if ($event->page_matches("untag")) {
-            if ($user->can(Permissions::BAN_IMAGE)) {
-                if ($event->get_arg(0) == "add") {
-                    $user->ensure_authed();
-                    $input = validate_input(["c_tag"=>"string", "c_redirect"=>"string"]);
-                    $database->execute(
-                        "INSERT INTO untags(tag, redirect) VALUES (:tag, :redirect)",
-                        ["tag"=>$input['c_tag'], "redirect"=>$input['c_redirect']]
-                    );
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(referer_or(make_link()));
-                } elseif ($event->get_arg(0) == "remove") {
-                    $user->ensure_authed();
-                    $input = validate_input(["d_tag"=>"string"]);
-                    $database->execute(
-                        "DELETE FROM untags WHERE LOWER(tag) = LOWER(:tag)",
-                        ["tag"=>$input['d_tag']]
-                    );
-                    $page->flash("Post ban removed");
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(referer_or(make_link()));
-                } elseif ($event->get_arg(0) == "list") {
-                    $t = new NotATagTable($database->raw_db());
-                    $t->token = $user->get_auth_token();
-                    $t->inputs = $_GET;
-                    $this->theme->display_untags($page, $t->table($t->query()), $t->paginator());
-                }
-            }
+        if ($event->page_matches("untag/add", method: "POST", permission: Permissions::BAN_IMAGE)) {
+            $input = validate_input(["c_tag" => "string", "c_redirect" => "string"]);
+            $database->execute(
+                "INSERT INTO untags(tag, redirect) VALUES (:tag, :redirect)",
+                ["tag" => $input['c_tag'], "redirect" => $input['c_redirect']]
+            );
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(referer_or(make_link()));
+        }
+        if ($event->page_matches("untag/remove", method: "POST", permission: Permissions::BAN_IMAGE)) {
+            $input = validate_input(["d_tag" => "string"]);
+            $database->execute(
+                "DELETE FROM untags WHERE LOWER(tag) = LOWER(:tag)",
+                ["tag" => $input['d_tag']]
+            );
+            $page->flash("Post ban removed");
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(referer_or(make_link()));
+        }
+        if ($event->page_matches("untag/list")) {
+            $t = new NotATagTable($database->raw_db());
+            $t->token = $user->get_auth_token();
+            $t->inputs = $event->GET;
+            $this->theme->display_crud("UnTags", $t->table($t->query()), $t->paginator());
         }
     }
 }

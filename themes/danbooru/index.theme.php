@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class CustomIndexTheme extends IndexTheme
 {
     /**
-     * #param Image[] $images
+     * @param Image[] $images
      */
-    public function display_page(Page $page, array $images)
+    public function display_page(Page $page, array $images): void
     {
         $this->display_shortwiki($page);
 
@@ -18,7 +20,7 @@ class CustomIndexTheme extends IndexTheme
             $page_title = $config->get_string(SetupConfig::TITLE);
         } else {
             $search_string = Tag::implode($this->search_terms);
-            $query = url_escape(Tag::caret($search_string));
+            $query = url_escape($search_string);
             $page_title = html_escape($search_string);
         }
 
@@ -40,16 +42,16 @@ class CustomIndexTheme extends IndexTheme
     }
 
     /**
-     * #param string[] $search_terms
+     * @param string[] $search_terms
      */
     protected function build_navigation(int $page_number, int $total_pages, array $search_terms): string
     {
         $h_search_string = count($search_terms) == 0 ? "" : html_escape(implode(" ", $search_terms));
-        $h_search_link = make_link();
+        $h_search_link = search_link();
         return "
 			<p><form action='$h_search_link' method='GET'>
 				<input name='search' type='text' value='$h_search_string' class='autocomplete_tags' placeholder='Search' />
-				<input type='hidden' name='q' value='/post/list'>
+				<input type='hidden' name='q' value='post/list'>
 				<input type='submit' value='Find' style='display: none;' />
 			</form>
 			<div id='search_completions'></div>";
@@ -60,7 +62,7 @@ class CustomIndexTheme extends IndexTheme
         $h_query = html_escape($query);
         $table = "<div class='shm-image-list' data-query='$h_query'>";
         foreach ($images as $image) {
-            $table .= "\t<span class=\"thumb\">" . $this->build_thumb_html($image) . "</span>\n";
+            $table .= $this->build_thumb_html($image) . "\n";
         }
         $table .= "</div>";
         return $table;

@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+use function MicroHTML\rawHTML;
+
 class UserConfigTheme extends Themelet
 {
-    public function get_user_operations(string $key): string
+    public function get_user_operations(string $key): HTMLElement
     {
         $html = "
                 <p>".make_form(make_link("user_admin/reset_api_key"))."
@@ -22,7 +28,7 @@ class UserConfigTheme extends Themelet
                     </table>
                 </form>
             ";
-        return $html;
+        return rawHTML($html);
     }
 
 
@@ -37,9 +43,9 @@ class UserConfigTheme extends Themelet
      *
      * The page should wrap all the options in a form which links to setup_save
      */
-    public function display_user_config_page(Page $page, User $user, SetupPanel $panel)
+    public function display_user_config_page(Page $page, User $user, SetupPanel $panel): void
     {
-        usort($panel->blocks, "blockcmp");
+        usort($panel->blocks, "Shimmie2\blockcmp");
 
         /*
          * Try and keep the two columns even; count the line breaks in
@@ -60,6 +66,7 @@ class UserConfigTheme extends Themelet
 
         $page->set_title("User Options");
         $page->set_heading("User Options");
+        $page->add_block(new NavBlock());
         $page->add_block(new Block("User Options", $table));
         $page->set_mode(PageMode::PAGE);
     }

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 require_once "config.php";
 
 /**
@@ -9,67 +11,82 @@ require_once "config.php";
  */
 class DataUploadEvent extends Event
 {
-    public string $tmpname;
-    public array $metadata;
     public string $hash;
-    public string $mime = "";
-    public int $image_id = -1;
-    public ?int $replace_id = null;
+    public string $mime;
+    public int $size;
+
+    /** @var Image[] */
+    public array $images = [];
     public bool $handled = false;
     public bool $merged = false;
 
     /**
      * Some data is being uploaded.
      * This should be caught by a file handler.
-     * $metadata should contain at least "filename", "extension", "tags" and "source".
+     *
+     * @param string $tmpname The name of a physical file on the local hard drive.
+     * @param string $filename The name of the file as it was uploaded.
+     * @param int $slot The slot number of the upload.
+     * @param array<string, string> $metadata Key-value pairs of metadata, the
+     *    upload form can contain both common and slot-specific fields such as
+     *    "source" and "source12", in which case the slot-specific field will
+     *    override the common one.
      */
-    public function __construct(string $tmpname, array $metadata)
-    {
+    public function __construct(
+        public string $tmpname,
+        public string $filename,
+        public int $slot,
+        public array $metadata,
+    ) {
         parent::__construct();
-
-        assert(file_exists($tmpname));
-        assert(is_string($metadata["filename"]));
-        assert(is_array($metadata["tags"]));
-        assert(is_string($metadata["source"]) || is_null($metadata["source"]));
-
-        // DB limits to 255 char filenames
-        $metadata['filename'] = substr($metadata['filename'], 0, 255);
-
-        $this->metadata = $metadata;
-
         $this->set_tmpname($tmpname);
-
-        if (array_key_exists("extension", $metadata)) {
-            $mime = MimeType::get_for_file($tmpname, $metadata["extension"]);
-        } else {
-            $mime = MimeType::get_for_file($tmpname);
-        }
-
-        if (empty($mime)) {
-            throw new UploadException("Could not determine mime type for file " . $metadata["filename"]);
-        }
-
-        $this->set_mime($mime);
     }
 
-    public function set_mime(String $mime)
+    public function set_tmpname(string $tmpname, ?string $mime = null): void
     {
-        $this->mime = strtolower($mime);
-        $this->metadata["mime"] = $this->mime;
-    }
-
-    public function set_tmpname(String $tmpname)
-    {
+        assert(is_readable($tmpname));
         $this->tmpname = $tmpname;
-        $this->metadata['hash'] = md5_file($tmpname);
-        $this->metadata['size'] = filesize($tmpname);
-        // useful for most file handlers, so pull directly into fields
-        $this->hash = $this->metadata['hash'];
+        $this->hash = \Safe\md5_file($tmpname);
+        $this->size = \Safe\filesize($tmpname);
+        $mime = $mime ?? MimeType::get_for_file($tmpname, get_file_ext($this->filename));
+        if (empty($mime)) {
+            throw new UploadException("Could not determine mime type");
+        }
+
+        $this->mime = strtolower($mime);
     }
 }
 
 class UploadException extends SCoreException
 {
+}
+
+abstract class UploadResult
+{
+    public function __construct(
+        public string $name
+    ) {
+    }
+}
+
+class UploadError extends UploadResult
+{
+    public function __construct(
+        string $name,
+        public string $error
+    ) {
+        parent::__construct($name);
+    }
+}
+
+class UploadSuccess extends UploadResult
+{
+    public function __construct(
+        string $name,
+        public int $image_id
+    ) {
+        parent::__construct($name);
+    }
 }
 
 /**
@@ -80,7 +97,7 @@ class UploadException extends SCoreException
 class Upload extends Extension
 {
     /** @var UploadTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
     public bool $is_full;
 
     /**
@@ -91,7 +108,7 @@ class Upload extends Extension
         return 40;
     }
 
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
         global $config;
         $config->set_default_int(UploadConfig::COUNT, 3);
@@ -112,9 +129,15 @@ class Upload extends Extension
                 }
             }
         }
+
+        $config->set_default_bool(UploadConfig::MIME_CHECK_ENABLED, false);
+        $config->set_default_array(
+            UploadConfig::ALLOWED_MIME_STRINGS,
+            DataHandlerExtension::get_all_supported_mimes()
+        );
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $tes = [];
         $tes["Disabled"] = "none";
@@ -133,10 +156,26 @@ class Upload extends Extension
         $sb->add_label("<i>PHP Limit = " . ini_get('upload_max_filesize') . "</i>");
         $sb->add_choice_option(UploadConfig::TRANSLOAD_ENGINE, $tes, "<br/>Transload: ");
         $sb->add_bool_option(UploadConfig::TLSOURCE, "<br/>Use transloaded URL as source if none is provided: ");
+
+        $sb->start_table();
+        $sb->add_bool_option(UploadConfig::MIME_CHECK_ENABLED, "Enable upload MIME checks", true);
+        $sb->add_multichoice_option(UploadConfig::ALLOWED_MIME_STRINGS, $this->get_mime_options(), "Allowed MIME uploads", true);
+        $sb->end_table();
     }
 
+    /**
+     * @return array<string, string>
+     */
+    private function get_mime_options(): array
+    {
+        $output = [];
+        foreach (DataHandlerExtension::get_all_supported_mimes() as $mime) {
+            $output[MimeMap::get_name_for_mime($mime)] = $mime;
+        }
+        return $output;
+    }
 
-    public function onPageNavBuilding(PageNavBuildingEvent $event)
+    public function onPageNavBuilding(PageNavBuildingEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::CREATE_IMAGE)) {
@@ -144,29 +183,29 @@ class Upload extends Extension
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
-        if ($event->parent=="upload") {
-            if (class_exists("Wiki")) {
+        if ($event->parent == "upload") {
+            if (Extension::is_enabled(WikiInfo::KEY)) {
                 $event->add_nav_link("upload_guidelines", new Link('wiki/upload_guidelines'), "Guidelines");
             }
         }
     }
 
-    public function onDataUpload(DataUploadEvent $event)
+    public function onDataUpload(DataUploadEvent $event): void
     {
         global $config;
         if ($this->is_full) {
             throw new UploadException("Upload failed; disk nearly full");
         }
-        if (filesize($event->tmpname) > $config->get_int(UploadConfig::SIZE)) {
-            $size = to_shorthand_int(filesize($event->tmpname));
+        if ($event->size > $config->get_int(UploadConfig::SIZE)) {
+            $size = to_shorthand_int($event->size);
             $limit = to_shorthand_int($config->get_int(UploadConfig::SIZE));
             throw new UploadException("File too large ($size > $limit)");
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $cache, $page, $user;
 
@@ -178,99 +217,38 @@ class Upload extends Extension
             }
         }
 
-        if ($event->page_matches("upload/replace")) {
-            if (!$user->can(Permissions::REPLACE_IMAGE)) {
-                $this->theme->display_error(403, "Error", "{$user->name} doesn't have permission to replace images");
-                return;
-            }
-            if ($this->is_full) {
-                $this->theme->display_error(507, "Error", "Can't replace images: disk nearly full");
-                return;
-            }
-
-            // Try to get the image ID
-            if ($event->count_args() >= 1) {
-                $image_id = int_escape($event->get_arg(0));
-            } elseif (isset($_POST['image_id'])) {
-                $image_id = int_escape($_POST['image_id']);
-            } else {
-                throw new UploadException("Can not replace Post: No valid Post ID given.");
-            }
-            $image_old = Image::by_id($image_id);
-            if (is_null($image_old)) {
-                throw new UploadException("Can not replace Post: No post with ID $image_id");
-            }
-
-            $source = $_POST['source'] ?? null;
-
-            if (!empty($_POST["url"])) {
-                $image_ids = $this->try_transload($_POST["url"], [], $source, $image_id);
-                $cache->delete("thumb-block:{$image_id}");
-                $this->theme->display_upload_status($page, $image_ids);
-            } elseif (count($_FILES) > 0) {
-                $image_ids = $this->try_upload($_FILES["data"], [], $source, $image_id);
-                $cache->delete("thumb-block:{$image_id}");
-                $this->theme->display_upload_status($page, $image_ids);
-            } elseif (!empty($_GET['url'])) {
-                $image_ids = $this->try_transload($_GET['url'], [], $source, $image_id);
-                $cache->delete("thumb-block:{$image_id}");
-                $this->theme->display_upload_status($page, $image_ids);
-            } else {
-                $this->theme->display_replace_page($page, $image_id);
-            }
-        } elseif ($event->page_matches("upload")) {
-            if (!$user->can(Permissions::CREATE_IMAGE)) {
-                $this->theme->display_error(403, "Error", "{$user->name} doesn't have permission to upload images");
-                return;
-            }
+        if ($event->page_matches("upload", method: "GET", permission: Permissions::CREATE_IMAGE)) {
             if ($this->is_full) {
                 $this->theme->display_error(507, "Error", "Can't upload images: disk nearly full");
                 return;
             }
-
-            /* Regular Upload Image */
-            if (count($_FILES) > 0 || count($_POST) > 0) {
-                $image_ids = [];
-
-                foreach ($_FILES as $name => $file) {
-                    $tags = $this->tags_for_upload_slot(int_escape(substr($name, 4)));
-                    $source = $_POST['source'] ?? null;
-                    $image_ids += $this->try_upload($file, $tags, $source);
-                }
-                foreach ($_POST as $name => $value) {
-                    if (str_starts_with($name, "url") && strlen($value) > 0) {
-                        $tags = $this->tags_for_upload_slot(int_escape(substr($name, 3)));
-                        $source = $_POST['source'] ?? $value;
-                        $image_ids += $this->try_transload($value, $tags, $source);
-                    }
-                }
-
-                $this->theme->display_upload_status($page, $image_ids);
-            } elseif (!empty($_GET['url'])) {
-                $url = $_GET['url'];
-                $source = $_GET['source'] ?? $url;
-                $tags = ['tagme'];
-                if (!empty($_GET['tags']) && $_GET['tags'] != "null") {
-                    $tags = Tag::explode($_GET['tags']);
-                }
-
-                $image_ids = $this->try_transload($url, $tags, $source);
-                $this->theme->display_upload_status($page, $image_ids);
-            } else {
-                $this->theme->display_page($page);
-            }
+            $this->theme->display_page($page);
         }
-    }
+        if ($event->page_matches("upload", method: "POST", permission: Permissions::CREATE_IMAGE)) {
+            if ($this->is_full) {
+                $this->theme->display_error(507, "Error", "Can't upload images: disk nearly full");
+                return;
+            }
+            $results = [];
 
-    private function tags_for_upload_slot(int $id): array
-    {
-        # merge then explode, not explode then merge - else
-        # one of the merges may create a surplus "tagme"
-        return Tag::explode(
-            ($_POST["tags"] ?? "") .
-            " " .
-            ($_POST["tags$id"] ?? "")
-        );
+            $files = array_filter($_FILES, function ($file) {
+                return !empty($file['name']);
+            });
+            foreach ($files as $name => $file) {
+                $slot = int_escape(substr($name, 4));
+                $results = array_merge($results, $this->try_upload($file, $slot, only_strings($event->POST)));
+            }
+
+            $urls = array_filter($event->POST, function ($value, $key) {
+                return str_starts_with($key, "url") && is_string($value) && strlen($value) > 0;
+            }, ARRAY_FILTER_USE_BOTH);
+            foreach ($urls as $name => $value) {
+                $slot = int_escape(substr($name, 3));
+                $results = array_merge($results, $this->try_transload($value, $slot, only_strings($event->POST)));
+            }
+
+            $this->theme->display_upload_status($page, $results);
+        }
     }
 
     /**
@@ -305,96 +283,70 @@ class Upload extends Extension
 
     /**
      * Handle an upload.
-     * #param string[] $file
-     * #param string[] $tags
+     * @param mixed[] $file
+     * @param array<string, string> $metadata
+     * @return UploadResult[]
      */
-    private function try_upload(array $file, array $tags, ?string $source = null, ?int $replace_id = null): array
+    private function try_upload(array $file, int $slot, array $metadata): array
     {
-        global $page, $config;
+        global $page, $config, $database;
 
         // blank file boxes cause empty uploads, no need for error message
         if (empty($file['name'])) {
             return [];
         }
 
-        if (empty($source)) {
-            $source = null;
+        $results = [];
+
+        for ($i = 0; $i < count($file['name']); $i++) {
+            $name = $file['name'][$i];
+            $error = $file['error'][$i];
+            $tmp_name = $file['tmp_name'][$i];
+
+            if (empty($name)) {
+                continue;
+            }
+            try {
+                // check if the upload was successful
+                if ($error !== UPLOAD_ERR_OK) {
+                    throw new UploadException($this->upload_error_message($error));
+                }
+
+                $new_images = $database->with_savepoint(function () use ($tmp_name, $name, $slot, $metadata) {
+                    $event = send_event(new DataUploadEvent($tmp_name, basename($name), $slot, $metadata));
+                    if (count($event->images) == 0) {
+                        throw new UploadException("MIME type not supported: " . $event->mime);
+                    }
+                    return $event->images;
+                });
+                foreach($new_images as $image) {
+                    $results[] = new UploadSuccess($name, $image->id);
+                }
+            } catch (UploadException $ex) {
+                $results[] = new UploadError($name, $ex->getMessage());
+            }
         }
 
-        $image_ids = [];
-
-        $num_files = count($file['name']);
-        $limit = $config->get_int(UploadConfig::COUNT);
-        try {
-            if ($num_files > $limit) {
-                throw new UploadException("Upload limited to $limit");
-            }
-
-            for ($i = 0; $i < $num_files; $i++) {
-                if (empty($file['name'][$i])) {
-                    continue;
-                }
-                try {
-                    // check if the upload was successful
-                    if ($file['error'][$i] !== UPLOAD_ERR_OK) {
-                        throw new UploadException($this->upload_error_message($file['error'][$i]));
-                    }
-
-                    $pathinfo = pathinfo($file['name'][$i]);
-                    $metadata = [];
-                    $metadata['filename'] = $pathinfo['basename'];
-                    $metadata['extension'] = $pathinfo['extension'] ?? "";
-                    $metadata['mime'] = MimeType::get_for_file($file['tmp_name'][$i], $metadata['extension']);
-                    if (empty($metadata['mime'])) {
-                        throw new UploadException("Unable to determine MIME for file " . $metadata['filename']);
-                    }
-
-                    $metadata['tags'] = $tags;
-                    $metadata['source'] = $source;
-
-                    $event = new DataUploadEvent($file['tmp_name'][$i], $metadata);
-                    $event->replace_id = $replace_id;
-                    send_event($event);
-                    if ($event->image_id == -1) {
-                        throw new UploadException("MIME type not supported: " . $metadata['mime']);
-                    }
-                    $image_ids[] = $event->image_id;
-                    $page->add_http_header("X-Shimmie-Post-ID: " . $event->image_id);
-                } catch (UploadException $ex) {
-                    $this->theme->display_upload_error(
-                        $page,
-                        "Error with " . html_escape($file['name'][$i]),
-                        $ex->getMessage()
-                    );
-                }
-            }
-        } catch (UploadException $ex) {
-            $this->theme->display_upload_error(
-                $page,
-                "Error with upload",
-                $ex->getMessage()
-            );
-        }
-
-        return $image_ids;
+        return $results;
     }
 
-    private function try_transload(string $url, array $tags, string $source = null, ?int $replace_id = null): array
+    /**
+     * @param array<string, string> $metadata
+     * @return UploadResult[]
+     */
+    private function try_transload(string $url, int $slot, array $metadata): array
     {
-        global $page, $config, $user;
+        global $page, $config, $user, $database;
 
-        $image_ids = [];
-        $tmp_filename = tempnam(ini_get('upload_tmp_dir'), "shimmie_transload");
+        $results = [];
+        $tmp_filename = shm_tempnam("transload");
 
         try {
             // Fetch file
-            $headers = fetch_url($url, $tmp_filename);
-            if (is_null($headers)) {
-                log_warning("core-util", "Failed to fetch $url");
-                throw new UploadException("Error reading from " . html_escape($url));
-            }
-            if (filesize($tmp_filename) == 0) {
-                throw new UploadException("No data found in " . html_escape($url) . " -- perhaps the site has hotlink protection?");
+            try {
+                $headers = fetch_url($url, $tmp_filename);
+            } catch (FetchException $e) {
+                throw new UploadException("Error reading from $url: $e");
             }
 
             // Parse metadata
@@ -402,40 +354,24 @@ class Upload extends Extension
             $h_filename = ($s_filename ? preg_replace('/^.*filename="([^ ]+)"/i', '$1', $s_filename) : null);
             $filename = $h_filename ?: basename($url);
 
-            $pathinfo = pathinfo($url);
-            $metadata = [];
-            $metadata['filename'] = $filename;
-            $metadata['tags'] = $tags;
-            $metadata['source'] = (($url == $source) && !$config->get_bool(UploadConfig::TLSOURCE) ? "" : $source);
-            $metadata['extension'] = $pathinfo['extension'] ?? "";
-            if ($user->can(Permissions::EDIT_IMAGE_LOCK) && !empty($_GET['locked'])) {
-                $metadata['locked'] = bool_escape($_GET['locked']) ? "on" : "";
+            $new_images = $database->with_savepoint(function () use ($tmp_filename, $filename, $slot, $metadata) {
+                $event = send_event(new DataUploadEvent($tmp_filename, $filename, $slot, $metadata));
+                if (count($event->images) == 0) {
+                    throw new UploadException("File type not supported: " . $event->mime);
+                }
+                return $event->images;
+            });
+            foreach($new_images as $image) {
+                $results[] = new UploadSuccess($url, $image->id);
             }
-            if (Extension::is_enabled(RatingsInfo::KEY) && !empty($_GET['rating'])) {
-                // Rating event will validate that this is s/q/e/u
-                $metadata['rating'] = strtolower($_GET['rating'])[0];
-            }
-
-            // Upload file
-            $event = new DataUploadEvent($tmp_filename, $metadata);
-            $event->replace_id = $replace_id;
-            send_event($event);
-            if ($event->image_id == -1) {
-                throw new UploadException("File type not supported: " . $metadata['extension']);
-            }
-            $image_ids[] = $event->image_id;
         } catch (UploadException $ex) {
-            $this->theme->display_upload_error(
-                $page,
-                "Error with " . html_escape($url),
-                $ex->getMessage()
-            );
+            $results[] = new UploadError($url, $ex->getMessage());
         } finally {
             if (file_exists($tmp_filename)) {
                 unlink($tmp_filename);
             }
         }
 
-        return $image_ids;
+        return $results;
     }
 }

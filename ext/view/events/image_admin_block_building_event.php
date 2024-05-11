@@ -2,10 +2,17 @@
 
 declare(strict_types=1);
 
-class ImageAdminBlockBuildingEvent extends Event
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+use function MicroHTML\{FORM,INPUT};
+
+/**
+ * @extends PartListBuildingEvent<HTMLElement>
+ */
+class ImageAdminBlockBuildingEvent extends PartListBuildingEvent
 {
-    /** @var string[] */
-    public array $parts = [];
     public Image $image;
     public User $user;
     public string $context;
@@ -18,11 +25,17 @@ class ImageAdminBlockBuildingEvent extends Event
         $this->context = $context;
     }
 
-    public function add_part(string $html, int $position=50)
+    public function add_button(string $name, string $path, int $position = 50): void
     {
-        while (isset($this->parts[$position])) {
-            $position++;
-        }
-        $this->parts[$position] = $html;
+        $this->add_part(
+            SHM_SIMPLE_FORM(
+                $path,
+                INPUT([
+                    "type" => "submit",
+                    "value" => $name,
+                ])
+            ),
+            $position
+        );
     }
 }

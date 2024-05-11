@@ -1,11 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class TagListTest extends ShimmiePHPUnitTestCase
 {
-    private array $pages = ["map", "alphabetic", "popularity", "categories"];
+    /** @var string[] */
+    private array $pages = ["map", "alphabetic", "popularity"];
 
-    public function testTagList()
+    public function testTagList(): void
     {
         $this->get_page('tags/map');
         $this->assert_title('Tag List');
@@ -16,25 +20,22 @@ class TagListTest extends ShimmiePHPUnitTestCase
         $this->get_page('tags/popularity');
         $this->assert_title('Tag List');
 
-        $this->get_page('tags/categories');
-        $this->assert_title('Tag List');
-
         # FIXME: test that these show the right stuff
     }
 
-    public function testMinCount()
+    public function testMinCount(): void
     {
         foreach ($this->pages as $page) {
-            $this->get_page("tags/$page", ["mincount"=>999999]);
+            $this->get_page("tags/$page", ["mincount" => 999999]);
             $this->assert_title("Tag List");
 
-            $this->get_page("tags/$page", ["mincount"=>1]);
+            $this->get_page("tags/$page", ["mincount" => 1]);
             $this->assert_title("Tag List");
 
-            $this->get_page("tags/$page", ["mincount"=>0]);
+            $this->get_page("tags/$page", ["mincount" => 0]);
             $this->assert_title("Tag List");
 
-            $this->get_page("tags/$page", ["mincount"=>-1]);
+            $this->get_page("tags/$page", ["mincount" => -1]);
             $this->assert_title("Tag List");
         }
     }

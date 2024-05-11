@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 // TODO: Add support for generating an icon from embedded cover art
 // TODO: MORE AUDIO FORMATS
 
@@ -20,9 +22,9 @@ class MP3FileHandler extends DataHandlerExtension
         // TODO: ->length = ???
     }
 
-    protected function create_thumb(string $hash, string $mime): bool
+    protected function create_thumb(Image $image): bool
     {
-        copy("ext/handle_mp3/thumb.jpg", warehouse_path(Image::THUMBNAIL_DIR, $hash));
+        copy("ext/handle_mp3/thumb.jpg", $image->get_thumb_filename());
         return true;
     }
 

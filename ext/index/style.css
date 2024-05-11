@@ -1,10 +1,17 @@
-
-/*noinspection CssRedundantUnit*/
 #image-list .blockbody {
 	background: none;
 	border: none;
 	box-shadow: none;
 	margin: 0px;
 	padding: 0px;
-	text-align: justify;
+	text-align: left;
+	margin: 0 10px 10px 0;
+}
+.shm-image-list {
+	display: grid;
+	grid-template-columns: repeat( auto-fill, calc(var(--thumb-width) + 42px) );
+	place-items: center;
+}
+.shm-image-list .thumb {
+	margin-bottom: 8px;
 }

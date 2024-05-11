@@ -1,9 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class RSSCommentsTest extends ShimmiePHPUnitTestCase
 {
-    public function testImageFeed()
+    public function testImageFeed(): void
     {
         global $user;
         $this->log_in_as_user();

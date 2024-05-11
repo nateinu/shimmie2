@@ -2,10 +2,13 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class SVGFileHandlerTheme extends Themelet
 {
-    public function display_image(Page $page, Image $image)
+    public function display_image(Image $image): void
     {
+        global $page;
         $ilink = make_link("get_svg/{$image->id}/{$image->id}.svg");
         //		$ilink = $image->get_image_link();
         $html = "

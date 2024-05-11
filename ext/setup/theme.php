@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class SetupTheme extends Themelet
 {
     /*
@@ -15,9 +17,9 @@ class SetupTheme extends Themelet
      *
      * The page should wrap all the options in a form which links to setup_save
      */
-    public function display_page(Page $page, SetupPanel $panel)
+    public function display_page(Page $page, SetupPanel $panel): void
     {
-        usort($panel->blocks, "blockcmp");
+        usort($panel->blocks, "Shimmie2\blockcmp");
 
         /*
          * Try and keep the two columns even; count the line breaks in
@@ -41,7 +43,10 @@ class SetupTheme extends Themelet
         $page->add_block(new Block("Setup", $table));
     }
 
-    public function display_advanced(Page $page, $options)
+    /**
+     * @param array<string, mixed> $options
+     */
+    public function display_advanced(Page $page, array $options): void
     {
         $h_rows = "";
         ksort($options);
@@ -92,11 +97,10 @@ class SetupTheme extends Themelet
     {
         $h = $block->header;
         $b = $block->body;
-        $i = preg_replace('/[^a-zA-Z0-9]/', '_', $h) . "-setup";
         $html = "
 			<section class='setupblock'>
-				<b class='shm-toggler' data-toggle-sel='#$i'>$h</b>
-				<br><div id='$i'>$b</div>
+				<b>$h</b>
+				<br>$b
 			</section>
 		";
         return $html;

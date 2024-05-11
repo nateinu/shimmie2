@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
+use FFSPHP\PDO;
+
 abstract class SCORE
 {
     public const AIPK      = "SCORE_AIPK";
@@ -9,9 +14,9 @@ abstract class SCORE
 
 abstract class DBEngine
 {
-    public ?string $name = null;
+    public DatabaseDriverID $id;
 
-    public function init(PDO $db)
+    public function init(PDO $db): void
     {
     }
 
@@ -25,18 +30,18 @@ abstract class DBEngine
         return 'CREATE TABLE '.$name.' ('.$data.')';
     }
 
-    abstract public function set_timeout(PDO $db, ?int $time);
+    abstract public function set_timeout(PDO $db, ?int $time): void;
 
     abstract public function get_version(PDO $db): string;
 
-    abstract public function notify(PDO $db, string $channel, ?string $data=null): void;
+    abstract public function notify(PDO $db, string $channel, ?string $data = null): void;
 }
 
 class MySQL extends DBEngine
 {
-    public ?string $name = DatabaseDriver::MYSQL;
+    public DatabaseDriverID $id = DatabaseDriverID::MYSQL;
 
-    public function init(PDO $db)
+    public function init(PDO $db): void
     {
         $db->exec("SET NAMES utf8;");
     }
@@ -61,27 +66,24 @@ class MySQL extends DBEngine
         // $db->exec("SET SESSION MAX_EXECUTION_TIME=".$time.";");
     }
 
-    public function notify(PDO $db, string $channel, ?string $data=null): void
+    public function notify(PDO $db, string $channel, ?string $data = null): void
     {
     }
 
     public function get_version(PDO $db): string
     {
-        return $db->query('select version()')->fetch()[0];
+        return $db->execute('select version()')->fetch()[0];
     }
 }
 
 class PostgreSQL extends DBEngine
 {
-    public ?string $name = DatabaseDriver::PGSQL;
+    public DatabaseDriverID $id = DatabaseDriverID::PGSQL;
 
-    public function init(PDO $db)
+    public function init(PDO $db): void
     {
-        if (array_key_exists('REMOTE_ADDR', $_SERVER)) {
-            $db->exec("SET application_name TO 'shimmie [{$_SERVER['REMOTE_ADDR']}]';");
-        } else {
-            $db->exec("SET application_name TO 'shimmie [local]';");
-        }
+        $addr = array_key_exists('REMOTE_ADDR', $_SERVER) ? get_real_ip() : 'local';
+        $db->exec("SET application_name TO 'shimmie [$addr]';");
         if (defined("DATABASE_TIMEOUT")) {
             $this->set_timeout($db, DATABASE_TIMEOUT);
         }
@@ -108,7 +110,7 @@ class PostgreSQL extends DBEngine
         $db->exec("SET statement_timeout TO ".$time.";");
     }
 
-    public function notify(PDO $db, string $channel, ?string $data=null): void
+    public function notify(PDO $db, string $channel, ?string $data = null): void
     {
         if ($data) {
             $db->exec("NOTIFY $channel, '$data';");
@@ -119,44 +121,44 @@ class PostgreSQL extends DBEngine
 
     public function get_version(PDO $db): string
     {
-        return $db->query('select version()')->fetch()[0];
+        return $db->execute('select version()')->fetch()[0];
     }
 }
 
 // shimmie functions for export to sqlite
-function _unix_timestamp($date): int
+function _unix_timestamp(string $date): int
 {
-    return strtotime($date);
+    return \Safe\strtotime($date);
 }
 function _now(): string
 {
     return date("Y-m-d H:i:s");
 }
-function _floor($a): float
+function _floor(float|int $a): float
 {
     return floor($a);
 }
-function _log($a, $b=null): float
+function _log(float $a, ?float $b = null): float
 {
     if (is_null($b)) {
         return log($a);
     } else {
-        return log($a, $b);
+        return log($b, $a);
     }
 }
-function _isnull($a): bool
+function _isnull(mixed $a): bool
 {
     return is_null($a);
 }
-function _md5($a): string
+function _md5(string $a): string
 {
     return md5($a);
 }
-function _concat($a, $b): string
+function _concat(string $a, string $b): string
 {
     return $a . $b;
 }
-function _lower($a): string
+function _lower(string $a): string
 {
     return strtolower($a);
 }
@@ -164,29 +166,29 @@ function _rand(): int
 {
     return rand();
 }
-function _ln($n): float
+function _ln(float $n): float
 {
     return log($n);
 }
 
 class SQLite extends DBEngine
 {
-    public ?string $name = DatabaseDriver::SQLITE;
+    public DatabaseDriverID $id = DatabaseDriverID::SQLITE;
 
-    public function init(PDO $db)
+    public function init(PDO $db): void
     {
         ini_set('sqlite.assoc_case', '0');
         $db->exec("PRAGMA foreign_keys = ON;");
-        $db->sqliteCreateFunction('UNIX_TIMESTAMP', '_unix_timestamp', 1);
-        $db->sqliteCreateFunction('now', '_now', 0);
-        $db->sqliteCreateFunction('floor', '_floor', 1);
-        $db->sqliteCreateFunction('log', '_log');
-        $db->sqliteCreateFunction('isnull', '_isnull', 1);
-        $db->sqliteCreateFunction('md5', '_md5', 1);
-        $db->sqliteCreateFunction('concat', '_concat', 2);
-        $db->sqliteCreateFunction('lower', '_lower', 1);
-        $db->sqliteCreateFunction('rand', '_rand', 0);
-        $db->sqliteCreateFunction('ln', '_ln', 1);
+        $db->sqliteCreateFunction('UNIX_TIMESTAMP', 'Shimmie2\_unix_timestamp', 1);
+        $db->sqliteCreateFunction('now', 'Shimmie2\_now', 0);
+        $db->sqliteCreateFunction('floor', 'Shimmie2\_floor', 1);
+        $db->sqliteCreateFunction('log', 'Shimmie2\_log');
+        $db->sqliteCreateFunction('isnull', 'Shimmie2\_isnull', 1);
+        $db->sqliteCreateFunction('md5', 'Shimmie2\_md5', 1);
+        $db->sqliteCreateFunction('concat', 'Shimmie2\_concat', 2);
+        $db->sqliteCreateFunction('lower', 'Shimmie2\_lower', 1);
+        $db->sqliteCreateFunction('rand', 'Shimmie2\_rand', 0);
+        $db->sqliteCreateFunction('ln', 'Shimmie2\_ln', 1);
     }
 
     public function scoreql_to_sql(string $data): string
@@ -220,12 +222,12 @@ class SQLite extends DBEngine
         // There doesn't seem to be such a thing for SQLite, so it does nothing
     }
 
-    public function notify(PDO $db, string $channel, ?string $data=null): void
+    public function notify(PDO $db, string $channel, ?string $data = null): void
     {
     }
 
     public function get_version(PDO $db): string
     {
-        return $db->query('select sqlite_version()')->fetch()[0];
+        return $db->execute('select sqlite_version()')->fetch()[0];
     }
 }

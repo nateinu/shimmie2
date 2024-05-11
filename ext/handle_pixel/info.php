@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class PixelFileHandlerInfo extends ExtensionInfo
 {
     public const KEY = "handle_pixel";
@@ -10,6 +12,7 @@ class PixelFileHandlerInfo extends ExtensionInfo
     public string $name = "Handle Pixel";
     public string $url = self::SHIMMIE_URL;
     public array $authors = self::SHISH_AUTHOR;
+    public ExtensionCategory $category = ExtensionCategory::FILE_HANDLING;
     public string $description = "Handle JPEG, PNG, GIF, WEBP, etc files";
     public bool $core = true;
 }

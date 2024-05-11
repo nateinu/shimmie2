@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 use MicroHTML\HTMLElement;
 use MicroCRUD\ActionColumn;
 use MicroCRUD\Column;
 use MicroCRUD\DateTimeColumn;
 use MicroCRUD\TextColumn;
 use MicroCRUD\Table;
+
 use function MicroHTML\A;
 use function MicroHTML\SPAN;
 use function MicroHTML\emptyHTML;
@@ -19,19 +22,19 @@ use function MicroHTML\rawHTML;
 
 class ShortDateTimeColumn extends DateTimeColumn
 {
-    public function read_input(array $inputs)
+    public function read_input(array $inputs): HTMLElement
     {
         return emptyHTML(
             INPUT([
-                "type"=>"date",
-                "name"=>"r_{$this->name}[]",
-                "value"=>@$inputs["r_{$this->name}"][0]
+                "type" => "date",
+                "name" => "r_{$this->name}[]",
+                "value" => @$inputs["r_{$this->name}"][0]
             ]),
             BR(),
             INPUT([
-                "type"=>"date",
-                "name"=>"r_{$this->name}[]",
-                "value"=>@$inputs["r_{$this->name}"][1]
+                "type" => "date",
+                "name" => "r_{$this->name}[]",
+                "value" => @$inputs["r_{$this->name}"][1]
             ])
         );
     }
@@ -39,7 +42,7 @@ class ShortDateTimeColumn extends DateTimeColumn
 
 class ActorColumn extends Column
 {
-    public function __construct($name, $title)
+    public function __construct(string $name, string $title)
     {
         parent::__construct($name, $title);
         $this->sortable = false;
@@ -47,7 +50,7 @@ class ActorColumn extends Column
 
     public function get_sql_filter(): string
     {
-        $driver = $this->table->db->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $driver = $this->table->db->getAttribute(\PDO::ATTR_DRIVER_NAME);
         switch ($driver) {
             case "pgsql":
                 return "((LOWER(username) = LOWER(:{$this->name}_0)) OR (address && cast(:{$this->name}_1 as inet)))";
@@ -56,7 +59,7 @@ class ActorColumn extends Column
         }
     }
 
-    public function read_input($inputs)
+    public function read_input(array $inputs): HTMLElement
     {
         return emptyHTML(
             INPUT([
@@ -75,8 +78,12 @@ class ActorColumn extends Column
         );
     }
 
-    public function modify_input_for_read($input): array
+    /**
+     * @return array{0: string|null, 1: string|null}
+     */
+    public function modify_input_for_read(string|array $input): array
     {
+        assert(is_array($input));
         list($un, $ip) = $input;
         if (empty($un)) {
             $un = null;
@@ -87,11 +94,14 @@ class ActorColumn extends Column
         return [$un, $ip];
     }
 
-    public function display($row): HTMLElement
+    /**
+     * @param array{username: string, address: string} $row
+     */
+    public function display(array $row): HTMLElement
     {
         $ret = emptyHTML();
         if ($row['username'] != "Anonymous") {
-            $ret->appendChild(A(["href"=>make_link("user/{$row['username']}"), "title"=>$row['address']], $row['username']));
+            $ret->appendChild(A(["href" => make_link("user/{$row['username']}"), "title" => $row['address']], $row['username']));
             $ret->appendChild(BR());
         }
         $ret->appendChild($row['address']);
@@ -109,17 +119,23 @@ class MessageColumn extends Column
 
     public function get_sql_filter(): string
     {
-        return "({$this->name} LIKE :{$this->name}_0 AND priority >= :{$this->name}_1)";
+        $driver = $this->table->db->getAttribute(\PDO::ATTR_DRIVER_NAME);
+        switch ($driver) {
+            case "pgsql":
+                return "(LOWER({$this->name}) LIKE LOWER(:{$this->name}_0) AND priority >= :{$this->name}_1)";
+            default:
+                return "({$this->name} LIKE :{$this->name}_0 AND priority >= :{$this->name}_1)";
+        }
     }
 
-    public function read_input(array $inputs)
+    public function read_input(array $inputs): HTMLElement
     {
         $ret = emptyHTML(
             INPUT([
-                "type"=>"text",
-                "name"=>"r_{$this->name}[]",
-                "placeholder"=>$this->title,
-                "value"=>@$inputs["r_{$this->name}"][0]
+                "type" => "text",
+                "name" => "r_{$this->name}[]",
+                "placeholder" => $this->title,
+                "value" => @$inputs["r_{$this->name}"][0]
             ])
         );
 
@@ -130,10 +146,10 @@ class MessageColumn extends Column
             "Error" => SCORE_LOG_ERROR,
             "Critical" => SCORE_LOG_CRITICAL,
         ];
-        $s = SELECT(["name"=>"r_{$this->name}[]"]);
-        $s->appendChild(OPTION(["value"=>""], '-'));
+        $s = SELECT(["name" => "r_{$this->name}[]"]);
+        $s->appendChild(OPTION(["value" => ""], '-'));
         foreach ($options as $k => $v) {
-            $attrs = ["value"=>$v];
+            $attrs = ["value" => $v];
             if ($v == @$inputs["r_{$this->name}"][1]) {
                 $attrs["selected"] = true;
             }
@@ -143,8 +159,9 @@ class MessageColumn extends Column
         return $ret;
     }
 
-    public function modify_input_for_read($input)
+    public function modify_input_for_read(array|string $input): mixed
     {
+        assert(is_array($input));
         list($m, $l) = $input;
         if (empty($m)) {
             $m = "%";
@@ -157,20 +174,30 @@ class MessageColumn extends Column
         return [$m, $l];
     }
 
-    public function display($row)
+    public function display(array $row): HTMLElement
     {
         $c = "#000";
         switch ($row['priority']) {
-            case SCORE_LOG_DEBUG: $c = "#999"; break;
-            case SCORE_LOG_INFO: $c = "#000"; break;
-            case SCORE_LOG_WARNING: $c = "#800"; break;
-            case SCORE_LOG_ERROR: $c = "#C00"; break;
-            case SCORE_LOG_CRITICAL: $c = "#F00"; break;
+            case SCORE_LOG_DEBUG:
+                $c = "#999";
+                break;
+            case SCORE_LOG_INFO:
+                $c = "#000";
+                break;
+            case SCORE_LOG_WARNING:
+                $c = "#800";
+                break;
+            case SCORE_LOG_ERROR:
+                $c = "#C00";
+                break;
+            case SCORE_LOG_CRITICAL:
+                $c = "#F00";
+                break;
         }
-        return SPAN(["style"=>"color: $c"], rawHTML($this->scan_entities($row[$this->name])));
+        return SPAN(["style" => "color: $c"], rawHTML($this->scan_entities($row[$this->name])));
     }
 
-    protected function scan_entities(string $line)
+    protected function scan_entities(string $line): string
     {
         $line = preg_replace_callback("/Image #(\d+)/s", [$this, "link_image"], $line);
         $line = preg_replace_callback("/Post #(\d+)/s", [$this, "link_image"], $line);
@@ -178,7 +205,10 @@ class MessageColumn extends Column
         return $line;
     }
 
-    protected function link_image($id)
+    /**
+     * @param array{1: string} $id
+     */
+    protected function link_image(array $id): string
     {
         $iid = int_escape($id[1]);
         return "<a href='".make_link("post/view/$iid")."'>&gt;&gt;$iid</a>";
@@ -202,22 +232,19 @@ class LogTable extends Table
             new ActionColumn("id"),
         ]);
         $this->order_by = ["date_sent DESC"];
-        $this->table_attrs = ["class" => "zebra"];
+        $this->table_attrs = ["class" => "zebra form"];
     }
 }
 
 class LogDatabase extends Extension
 {
-    /** @var LogDatabaseTheme */
-    protected ?Themelet $theme;
-
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
         global $config;
         $config->set_default_int("log_db_priority", SCORE_LOG_INFO);
     }
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 
@@ -236,7 +263,7 @@ class LogDatabase extends Extension
         }
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $sb = $event->panel->create_new_block("Logging (Database)");
         $sb->add_choice_option("log_db_priority", [
@@ -248,29 +275,27 @@ class LogDatabase extends Extension
         ], "Debug Level: ");
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $database, $user;
-        if ($event->page_matches("log/view")) {
-            if ($user->can(Permissions::VIEW_EVENTLOG)) {
-                $t = new LogTable($database->raw_db());
-                $t->inputs = $_GET;
-                $this->theme->display_events($t->table($t->query()), $t->paginator());
-            }
+        if ($event->page_matches("log/view", permission: Permissions::VIEW_EVENTLOG)) {
+            $t = new LogTable($database->raw_db());
+            $t->inputs = $event->GET;
+            $this->theme->display_crud("Event Log", $t->table($t->query()), $t->paginator());
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent==="system") {
+        if ($event->parent === "system") {
             if ($user->can(Permissions::VIEW_EVENTLOG)) {
                 $event->add_nav_link("event_log", new Link('log/view'), "Event Log");
             }
         }
     }
 
-    public function onUserBlockBuilding(UserBlockBuildingEvent $event)
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::VIEW_EVENTLOG)) {
@@ -278,7 +303,7 @@ class LogDatabase extends Extension
         }
     }
 
-    public function onLog(LogEvent $event)
+    public function onLog(LogEvent $event): void
     {
         global $config, $database, $user;
 
@@ -294,8 +319,8 @@ class LogDatabase extends Extension
 				INSERT INTO score_log(date_sent, section, priority, username, address, message)
 				VALUES(now(), :section, :priority, :username, :address, :message)
 			", [
-                "section"=>$event->section, "priority"=>$event->priority, "username"=>$username,
-                "address"=>$_SERVER['REMOTE_ADDR'], "message"=>$event->message
+                "section" => $event->section, "priority" => $event->priority, "username" => $username,
+                "address" => get_real_ip(), "message" => $event->message
             ]);
         }
     }

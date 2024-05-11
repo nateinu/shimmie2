@@ -1,15 +1,30 @@
-
-.js .image_info .edit {
-	display: none;
-}
-.js .image_info .view {
-	display: block;
+TABLE.form.image_info {
+	width: 550px;
+	max-width: 100%;
 }
 
-.no-js .image_info .edit {
+.image_info .edit {
 	display: block;
 }
-.no-js .image_info .view {
+.image_info .view {
 	display: none;
 }
 
+.image_info.infomode-view .edit {
+	display: none;
+}
+.image_info.infomode-view .view {
+	display: block;
+}
+
+.image_info TEXTAREA {
+	min-width: 100%;
+	min-height: 3rem;
+}
+
+.post_controls FORM {
+	margin-bottom: 0.75em;
+}
+.post_controls FORM:last-child {
+	margin-bottom: 0;
+}

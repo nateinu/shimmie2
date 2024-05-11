@@ -1,25 +1,32 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
+require_once "core/urls.php";
+
 /*
  * A small number of PHP-sanity things (eg don't silently ignore errors) to
  * be included right at the very start of index.php and tests/bootstrap.php
  */
 
-function die_nicely($title, $body, $code=0)
+function die_nicely(string $title, string $body, int $code = 0): void
 {
+    $data_href = get_base_href();
     print("<!DOCTYPE html>
 <html lang='en'>
 	<head>
 		<title>Shimmie</title>
-		<link rel=\"shortcut icon\" href=\"ext/static_files/static/favicon.ico\">
-		<link rel=\"stylesheet\" href=\"ext/static_files/style.css\" type=\"text/css\">
+		<link rel='shortcut icon' href='$data_href/ext/static_files/static/favicon.ico'>
+		<link rel='stylesheet' href='$data_href/ext/static_files/style.css' type='text/css'>
+		<link rel='stylesheet' href='$data_href/ext/static_files/installer.css' type='text/css'>
 	</head>
 	<body>
-		<div id=\"installer\">
+		<div id='installer'>
 		    <h1>Shimmie</h1>
 		    <h3>$title</h3>
-			<div class=\"container\">
+			<div class='container'>
 			    $body
 			</div>
 		</div>
@@ -31,7 +38,7 @@ function die_nicely($title, $body, $code=0)
     exit($code);
 }
 
-$min_php = "7.3";
+$min_php = "8.1";
 if (version_compare(phpversion(), $min_php, ">=") === false) {
     die_nicely("Not Supported", "
         Shimmie does not support versions of PHP lower than $min_php
@@ -45,7 +52,7 @@ set_error_handler(function ($errNo, $errStr) {
     // Should we turn ALL notices into errors? PHP allows a lot of
     // terrible things to happen by default...
     if (str_starts_with($errStr, 'Use of undefined constant ')) {
-        throw new Exception("PHP Error#$errNo: $errStr");
+        throw new \Exception("PHP Error#$errNo: $errStr");
     } else {
         return false;
     }

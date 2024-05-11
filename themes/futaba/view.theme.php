@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
-class CustomViewImageTheme extends ViewImageTheme
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+class CustomViewPostTheme extends ViewPostTheme
 {
-    public function display_page(Image $image, $editor_parts)
+    /**
+     * @param HTMLElement[] $editor_parts
+     */
+    public function display_page(Image $image, array $editor_parts): void
     {
         global $page;
         $page->set_heading(html_escape($image->get_tag_list()));

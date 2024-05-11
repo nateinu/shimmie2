@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 abstract class VideoContainers
 {
     public const WEBM = MimeType::WEBM;
@@ -61,12 +63,12 @@ abstract class VideoCodecs
 
 
 
-//
-//    public static function is_input_supported(string $engine, string $mime): bool
-//    {
-//        return MimeType::matches_array(
-//            $mime,
-//            MediaEngine::INPUT_SUPPORT[$engine]
-//        );
-//    }
+    //
+    //    public static function is_input_supported(string $engine, string $mime): bool
+    //    {
+    //        return MimeType::matches_array(
+    //            $mime,
+    //            MediaEngine::INPUT_SUPPORT[$engine]
+    //        );
+    //    }
 }

@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class CreateTipEvent extends Event
 {
     public bool $enable;
@@ -30,9 +32,9 @@ class DeleteTipEvent extends Event
 class Tips extends Extension
 {
     /** @var TipsTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 
@@ -44,13 +46,6 @@ class Tips extends Extension
                 text TEXT NOT NULL,
             ");
 
-            $database->execute(
-                "
-					INSERT INTO tips (enable, image, text)
-					VALUES (:enable, :image, :text)",
-                ["enable"=>true, "image"=>"coins.png", "text"=>"Do you like this extension? Please support us for developing new ones. <a href=\"https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8235933\" target=\"_blank\">Donate through paypal</a>."]
-            );
-
             $this->set_version("ext_tips_version", 2);
         }
         if ($this->get_version("ext_tips_version") < 2) {
@@ -59,54 +54,52 @@ class Tips extends Extension
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user;
 
         $this->getTip();
 
-        if ($event->page_matches("tips") && $user->can(Permissions::TIPS_ADMIN)) {
-            switch ($event->get_arg(0)) {
-                case "list":
-                    $this->manageTips();
-                    $this->getAll();
-                    break;
-                case "save":
-                    if ($user->check_auth_token()) {
-                        send_event(new CreateTipEvent(isset($_POST["enable"]), $_POST["image"], $_POST["text"]));
-                        $page->set_mode(PageMode::REDIRECT);
-                        $page->set_redirect(make_link("tips/list"));
-                    }
-                    break;
-                case "status":
-                    // FIXME: HTTP GET CSRF
-                    $tipID = int_escape($event->get_arg(1));
-                    $this->setStatus($tipID);
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("tips/list"));
-                    break;
-                case "delete":
-                    // FIXME: HTTP GET CSRF
-                    $tipID = int_escape($event->get_arg(1));
-                    send_event(new DeleteTipEvent($tipID));
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("tips/list"));
-                    break;
-            }
+        if ($event->page_matches("tips/list", permission: Permissions::TIPS_ADMIN)) {
+            $this->manageTips();
+            $this->getAll();
+        }
+        if ($event->page_matches("tips/save", method: "POST", permission: Permissions::TIPS_ADMIN)) {
+            send_event(new CreateTipEvent(
+                $event->get_POST("enable") == "on",
+                $event->req_POST("image"),
+                $event->req_POST("text")
+            ));
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("tips/list"));
+        }
+        if ($event->page_matches("tips/status/{tipID}", permission: Permissions::TIPS_ADMIN)) {
+            // FIXME: HTTP GET CSRF
+            $tipID = $event->get_iarg('tipID');
+            $this->setStatus($tipID);
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("tips/list"));
+        }
+        if ($event->page_matches("tips/delete/{tipID}", permission: Permissions::TIPS_ADMIN)) {
+            // FIXME: HTTP GET CSRF
+            $tipID = $event->get_iarg('tipID');
+            send_event(new DeleteTipEvent($tipID));
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("tips/list"));
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent==="system") {
+        if ($event->parent === "system") {
             if ($user->can(Permissions::TIPS_ADMIN)) {
                 $event->add_nav_link("tips", new Link('tips/list'), "Tips Editor");
             }
         }
     }
 
-    public function onUserBlockBuilding(UserBlockBuildingEvent $event)
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::TIPS_ADMIN)) {
@@ -114,12 +107,12 @@ class Tips extends Extension
         }
     }
 
-    private function manageTips()
+    private function manageTips(): void
     {
         $data_href = get_base_href();
         $url = $data_href."/ext/tips/images/";
 
-        $dirPath = dir('./ext/tips/images');
+        $dirPath = dir_ex('./ext/tips/images');
         $images = [];
         while (($file = $dirPath->read()) !== false) {
             if ($file[0] != ".") {
@@ -132,18 +125,18 @@ class Tips extends Extension
         $this->theme->manageTips($url, $images);
     }
 
-    public function onCreateTip(CreateTipEvent $event)
+    public function onCreateTip(CreateTipEvent $event): void
     {
         global $database;
         $database->execute(
             "
 				INSERT INTO tips (enable, image, text)
 				VALUES (:enable, :image, :text)",
-            ["enable"=>$event->enable, "image"=>$event->image, "text"=>$event->text]
+            ["enable" => $event->enable, "image" => $event->image, "text" => $event->text]
         );
     }
 
-    private function getTip()
+    private function getTip(): void
     {
         global $database;
 
@@ -156,14 +149,14 @@ class Tips extends Extension
             WHERE enable = :true
             ORDER BY RAND()
             LIMIT 1
-        ", ["true"=>true]);
+        ", ["true" => true]);
 
         if ($tip) {
             $this->theme->showTip($url, $tip);
         }
     }
 
-    private function getAll()
+    private function getAll(): void
     {
         global $database;
 
@@ -175,20 +168,20 @@ class Tips extends Extension
         $this->theme->showAll($url, $tips);
     }
 
-    private function setStatus(int $tipID)
+    private function setStatus(int $tipID): void
     {
         global $database;
 
-        $tip = $database->get_row("SELECT * FROM tips WHERE id = :id ", ["id"=>$tipID]);
+        $tip = $database->get_row("SELECT * FROM tips WHERE id = :id ", ["id" => $tipID]);
 
         $enable = bool_escape($tip['enable']);
 
-        $database->execute("UPDATE tips SET enable = :enable WHERE id = :id", ["enable"=>$enable, "id"=>$tipID]);
+        $database->execute("UPDATE tips SET enable = :enable WHERE id = :id", ["enable" => $enable, "id" => $tipID]);
     }
 
-    public function onDeleteTip(DeleteTipEvent $event)
+    public function onDeleteTip(DeleteTipEvent $event): void
     {
         global $database;
-        $database->execute("DELETE FROM tips WHERE id = :id", ["id"=>$event->tip_id]);
+        $database->execute("DELETE FROM tips WHERE id = :id", ["id" => $event->tip_id]);
     }
 }

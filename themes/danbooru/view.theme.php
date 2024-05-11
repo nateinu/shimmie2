@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
-class CustomViewImageTheme extends ViewImageTheme
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+class CustomViewPostTheme extends ViewPostTheme
 {
-    public function display_page(Image $image, $editor_parts)
+    /**
+     * @param HTMLElement[] $editor_parts
+     */
+    public function display_page(Image $image, array $editor_parts): void
     {
         global $page;
         $page->set_heading(html_escape($image->get_tag_list()));
@@ -35,24 +42,21 @@ class CustomViewImageTheme extends ViewImageTheme
 		<br>Filesize: $h_filesize
 		<br>Type: $h_type";
 
-        if ($image->length!=null) {
+        if ($image->length != null) {
             $h_length = format_milliseconds($image->length);
             $html .= "<br/>Length: $h_length";
         }
 
         if (!is_null($image->source)) {
-            $h_source = html_escape($image->source);
-            if (substr($image->source, 0, 7) != "http://" && substr($image->source, 0, 8) != "https://") {
-                $h_source = "http://" . $h_source;
-            }
+            $h_source = html_escape(make_http($image->source));
             $html .= "<br>Source: <a href='$h_source'>link</a>";
         }
 
         if (Extension::is_enabled(RatingsInfo::KEY)) {
-            if ($image->rating == null || $image->rating == "?") {
-                $image->rating = "?";
+            if ($image['rating'] === null || $image['rating'] == "?") {
+                $image['rating'] = "?";
             }
-            $h_rating = Ratings::rating_to_human($image->rating);
+            $h_rating = Ratings::rating_to_human($image['rating']);
             $html .= "<br>Rating: $h_rating";
         }
 

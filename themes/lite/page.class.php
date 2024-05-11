@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
 /**
  * Name: Lite Theme
  * Author: Zach Hall <zach@sosguy.net>
@@ -12,14 +17,7 @@ declare(strict_types=1);
 
 class Page extends BasePage
 {
-    public bool $left_enabled = true;
-
-    public function disable_left()
-    {
-        $this->left_enabled = false;
-    }
-
-    public function render()
+    public function body_html(): string
     {
         global $config;
 
@@ -48,16 +46,16 @@ class Page extends BasePage
         foreach ($this->blocks as $block) {
             switch ($block->section) {
                 case "left":
-                    $left_block_html .= $this->block_to_html($block, true, "left");
+                    $left_block_html .= $this->block_to_html($block, true);
                     break;
                 case "main":
-                    $main_block_html .= $this->block_to_html($block, false, "main");
+                    $main_block_html .= $this->block_to_html($block, false);
                     break;
                 case "user":
                     $user_block_html .= $block->body;
                     break;
                 case "subheading":
-                    $sub_block_html .= $this->block_to_html($block, false, "main");
+                    $sub_block_html .= $this->block_to_html($block, false);
                     break;
                 default:
                     print "<p>error: {$block->header} using an unknown section ({$block->section})";
@@ -74,66 +72,52 @@ class Page extends BasePage
             $custom_sublinks .= "</div>";
         }
 
-        if ($this->left_enabled == false) {
+        $flash_html = $this->flash ? "<b id='flash'>".nl2br(html_escape(implode("\n", $this->flash)))."</b>" : "";
+
+        if (!$this->left_enabled) {
             $left_block_html = "";
             $main_block_html = "<article id='body_noleft'>{$main_block_html}</article>";
         } else {
             $left_block_html = "<nav>{$left_block_html}</nav>";
-            $main_block_html = "<article>{$main_block_html}</article>";
+            $main_block_html = "<article>$flash_html{$main_block_html}</article>";
         }
 
-        $flash_html = $this->flash ? "<b id='flash'>".nl2br(html_escape(implode("\n", $this->flash)))."</b>" : "";
-        $head_html = $this->head_html();
         $footer_html = $this->footer_html();
 
-        print <<<EOD
-<!doctype html>
-<html class="no-js" lang="en">
-    $head_html
-	<body>
+        return <<<EOD
 		<header>
 			$menu
 			$custom_sublinks
 			$sub_block_html
 		</header>
 		$left_block_html
-		$flash_html
 		$main_block_html
 		<footer>
 		    $footer_html
 		</footer>
-	</body>
-</html>
 EOD;
     } /* end of function display_page() */
 
-    public function block_to_html(Block $block, bool $hidable=false, string $salt=""): string
+    public function block_to_html(Block $block, bool $hidable = false): string
     {
         $h = $block->header;
         $b = $block->body;
-        $i = str_replace(' ', '_', $h) . $salt;
-        $html = "<section id='{$i}'>";
-        if (!is_null($h)) {
-            if ($salt == "main") {
-                $html .= "<div class='maintop navside tab shm-toggler' data-toggle-sel='#{$i}'>{$h}</div>";
-            } else {
+        $i = $block->id;
+        $html = $b;
+        if ($h != "Paginator") {
+            $html = "<section id='{$i}'>";
+            if (!is_null($h)) {
                 $html .= "<div class='navtop navside tab shm-toggler' data-toggle-sel='#{$i}'>{$h}</div>";
             }
-        }
-        if (!is_null($b)) {
-            if ($salt =="main") {
-                $html .= "<div class='blockbody'>{$b}</div>";
-            } else {
-                $html .= "
-					<div class='navside tab'>{$b}</div>
-				";
+            if (!is_null($b)) {
+                $html .= "<div class='navside tab".($hidable ? " blockbody" : "")."'>$b</div>";
             }
+            $html .= "</section>";
         }
-        $html .= "</section>";
         return $html;
     }
 
-    public function navlinks(Link $link, string $desc, bool $active): ?string
+    public function navlinks(Link $link, HTMLElement|string $desc, bool $active): ?string
     {
         $html = null;
         if ($active) {

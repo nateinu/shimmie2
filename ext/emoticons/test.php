@@ -1,9 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class EmoticonsTest extends ShimmiePHPUnitTestCase
 {
-    public function testEmoticons()
+    public function testEmoticons(): void
     {
         global $user;
 

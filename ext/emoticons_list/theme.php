@@ -1,9 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class EmoticonListTheme extends Themelet
 {
-    public function display_emotes(array $list)
+    /**
+     * @param string[] $list
+     */
+    public function display_emotes(array $list): void
     {
         global $page;
         $data_href = get_base_href();
@@ -11,8 +17,7 @@ class EmoticonListTheme extends Themelet
         $html .= "<table><tr>";
         $n = 1;
         foreach ($list as $item) {
-            $pathinfo = pathinfo($item);
-            $name = $pathinfo["filename"];
+            $name = pathinfo($item, PATHINFO_FILENAME);
             $html .= "<td><img alt='$name' src='$data_href/$item'> :$name:</td>";
             if ($n++ % 3 == 0) {
                 $html .= "</tr><tr>";

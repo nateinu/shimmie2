@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class TipsTest extends ShimmiePHPUnitTestCase
 {
     public function setUp(): void
@@ -11,7 +14,7 @@ class TipsTest extends ShimmiePHPUnitTestCase
         $database->execute("DELETE FROM tips");
     }
 
-    public function testImageless()
+    public function testImageless(): void
     {
         global $database;
         $this->log_in_as_admin();
@@ -29,7 +32,7 @@ class TipsTest extends ShimmiePHPUnitTestCase
         $this->assert_no_text("a postless tip");
     }
 
-    public function testImaged()
+    public function testImaged(): void
     {
         global $database;
         $this->log_in_as_admin();
@@ -47,7 +50,7 @@ class TipsTest extends ShimmiePHPUnitTestCase
         $this->assert_no_text("a postless tip");
     }
 
-    public function testDisabled()
+    public function testDisabled(): void
     {
         global $database;
         $this->log_in_as_admin();

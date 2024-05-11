@@ -10,10 +10,10 @@
 
 # Shimmie
 
-[![Test & Publish](https://github.com/shish/shimmie2/workflows/Test%20&%20Publish/badge.svg)](https://github.com/shish/shimmie2/actions)
-[![Code Quality](https://scrutinizer-ci.com/g/shish/shimmie2/badges/quality-score.png?b=master)](https://scrutinizer-ci.com/g/shish/shimmie2/?branch=master)
-[![Code Coverage](https://scrutinizer-ci.com/g/shish/shimmie2/badges/coverage.png?b=master)](https://scrutinizer-ci.com/g/shish/shimmie2/?branch=master)
+[![Tests](https://github.com/shish/shimmie2/workflows/Tests/badge.svg?branch=main)](https://github.com/shish/shimmie2/actions)
+[![Matrix](https://matrix.to/img/matrix-badge.svg)](https://matrix.to/#/#shimmie:matrix.org)
 
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/shish/shimmie2?quickstart=1)
 
 # Documentation
 
@@ -24,13 +24,6 @@
 * [Advanced config](https://github.com/shish/shimmie2/wiki/Advanced-Config)
 * [Developer notes](https://github.com/shish/shimmie2/wiki/Development-Info)
 * [High-performance notes](https://github.com/shish/shimmie2/wiki/Performance)
-
-
-# Contact
-
-Email: webmaster at shishnet.org
-
-Issue/Bug tracker: https://github.com/shish/shimmie2/issues
 
 
 # Licence

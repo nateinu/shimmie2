@@ -1,9 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class Page extends BasePage
 {
-    public function render()
+    public function body_html(): string
     {
         global $config;
 
@@ -28,7 +31,7 @@ class Page extends BasePage
                     $main_block_html .= $block->get_html(false);
                     break;
                 case "subheading":
-                    $sub_block_html .= $block->body; // $this->block_to_html($block, true);
+                    $sub_block_html .= $block->body;
                     break;
                 default:
                     print "<p>error: {$block->header} using an unknown section ({$block->section})";
@@ -37,14 +40,9 @@ class Page extends BasePage
         }
 
         $flash_html = $this->flash ? "<b id='flash'>".nl2br(html_escape(implode("\n", $this->flash)))."</b>" : "";
-        $head_html = $this->head_html();
         $footer_html = $this->footer_html();
 
-        print <<<EOD
-<!doctype html>
-<html class="no-js" lang="en">
-    $head_html
-	<body>
+        return <<<EOD
 		<header>
 			<table id="header" class="bgtop" style="width: 100%; height: 113px;">
 				<tr>
@@ -67,8 +65,6 @@ class Page extends BasePage
 		<footer>
 		    $footer_html
 		</footer>
-	</body>
-</html>
 EOD;
     }
 }

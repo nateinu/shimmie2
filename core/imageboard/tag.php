@@ -1,6 +1,81 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
+use GQLA\Type;
+use GQLA\Field;
+use GQLA\Query;
+
+#[Type(name: "TagUsage")]
+class TagUsage
+{
+    #[Field]
+    public string $tag;
+    #[Field]
+    public int $uses;
+
+    public function __construct(string $tag, int $uses)
+    {
+        $this->tag = $tag;
+        $this->uses = $uses;
+    }
+
+    /**
+     * @return TagUsage[]
+     */
+    #[Query(name: "tags", type: '[TagUsage!]!')]
+    public static function tags(string $search, int $limit = 10): array
+    {
+        global $cache, $database;
+
+        $search = strtolower($search);
+        if (
+            $search == '' ||
+            $search[0] == '_' ||
+            $search[0] == '%' ||
+            strlen($search) > 32
+        ) {
+            return [];
+        }
+
+        $cache_key = "tagusage-$search";
+        $limitSQL = "";
+        $search = str_replace('_', '\_', $search);
+        $search = str_replace('%', '\%', $search);
+        $SQLarr = ["search" => "$search%"]; #, "cat_search"=>"%:$search%"];
+        if ($limit !== 0) {
+            $limitSQL = "LIMIT :limit";
+            $SQLarr['limit'] = $limit;
+            $cache_key .= "-" . $limit;
+        }
+
+        $res = cache_get_or_set(
+            $cache_key,
+            fn () => $database->get_pairs(
+                "
+                SELECT tag, count
+                FROM tags
+                WHERE LOWER(tag) LIKE LOWER(:search)
+                -- OR LOWER(tag) LIKE LOWER(:cat_search)
+                AND count > 0
+                ORDER BY count DESC
+                $limitSQL
+                ",
+                $SQLarr
+            ),
+            600
+        );
+
+        $counts = [];
+        foreach ($res as $k => $v) {
+            $counts[] = new TagUsage($k, $v);
+        }
+        return $counts;
+    }
+}
+
 /**
  * Class Tag
  *
@@ -11,20 +86,52 @@ declare(strict_types=1);
  */
 class Tag
 {
+    /** @var array<string, int> */
+    private static array $tag_id_cache = [];
+
+    public static function get_or_create_id(string $tag): int
+    {
+        global $database;
+
+        // don't cache in unit tests, because the test suite doesn't
+        // reset static variables but it does reset the database
+        if (!defined("UNITTEST") && array_key_exists($tag, self::$tag_id_cache)) {
+            return self::$tag_id_cache[$tag];
+        }
+
+        $id = $database->get_one(
+            "SELECT id FROM tags WHERE LOWER(tag) = LOWER(:tag)",
+            ["tag" => $tag]
+        );
+        if (empty($id)) {
+            // a new tag
+            $database->execute(
+                "INSERT INTO tags(tag) VALUES (:tag)",
+                ["tag" => $tag]
+            );
+            $id = $database->get_one(
+                "SELECT id FROM tags WHERE LOWER(tag) = LOWER(:tag)",
+                ["tag" => $tag]
+            );
+        }
+
+        self::$tag_id_cache[$tag] = $id;
+        return $id;
+    }
+
+    /** @param string[] $tags */
     public static function implode(array $tags): string
     {
-        sort($tags);
-        $tags = implode(' ', $tags);
-
-        return $tags;
+        sort($tags, SORT_FLAG_CASE | SORT_STRING);
+        return implode(' ', $tags);
     }
 
     /**
      * Turn a human-supplied string into a valid tag array.
      *
-     * #return string[]
+     * @return string[]
      */
-    public static function explode(string $tags, bool $tagme=true): array
+    public static function explode(string $tags, bool $tagme = true): array
     {
         global $database;
 
@@ -42,7 +149,7 @@ class Tag
         $new = [];
         $i = 0;
         $tag_count = count($tag_array);
-        while ($i<$tag_count) {
+        while ($i < $tag_count) {
             $tag = $tag_array[$i];
             $negative = '';
             if (!empty($tag) && ($tag[0] == '-')) {
@@ -56,7 +163,7 @@ class Tag
 					FROM aliases
 					WHERE LOWER(oldtag)=LOWER(:tag)
 				",
-                ["tag"=>$tag]
+                ["tag" => $tag]
             );
             if (empty($newtags)) {
                 //tag has no alias, use old tag
@@ -90,40 +197,45 @@ class Tag
     public static function sanitize(string $tag): string
     {
         $tag = preg_replace("/\s/", "", $tag);                # whitespace
-        $tag = preg_replace('/\x20[\x0e\x0f]/', '', $tag);   # unicode RTL
+        assert($tag !== null);
+        $tag = preg_replace('/\x20[\x0e\x0f]/', '', $tag);    # unicode RTL
+        assert($tag !== null);
         $tag = preg_replace("/\.+/", ".", $tag);              # strings of dots?
+        assert($tag !== null);
         $tag = preg_replace("/^(\.+[\/\\\\])+/", "", $tag);   # trailing slashes?
+        assert($tag !== null);
         $tag = trim($tag, ", \t\n\r\0\x0B");
 
         if ($tag == ".") {
             $tag = "";
         }  // hard-code one bad case...
 
-        if (mb_strlen($tag, 'UTF-8') > 255) {
-            throw new ScoreException("The tag below is longer than 255 characters, please use a shorter tag.\n$tag\n");
-        }
         return $tag;
     }
 
+    /**
+     * @param string[] $tags1
+     * @param string[] $tags2
+     */
     public static function compare(array $tags1, array $tags2): bool
     {
-        if (count($tags1)!==count($tags2)) {
+        if (count($tags1) !== count($tags2)) {
             return false;
         }
 
         $tags1 = array_map("strtolower", $tags1);
         $tags2 = array_map("strtolower", $tags2);
-        natcasesort($tags1);
-        natcasesort($tags2);
+        sort($tags1);
+        sort($tags2);
 
-        for ($i = 0; $i < count($tags1); $i++) {
-            if ($tags1[$i]!==$tags2[$i]) {
-                return false;
-            }
-        }
-        return true;
+        return $tags1 == $tags2;
     }
 
+    /**
+     * @param string[] $source
+     * @param string[] $remove
+     * @return string[]
+     */
     public static function get_diff_tags(array $source, array $remove): array
     {
         $before = array_map('strtolower', $source);
@@ -137,6 +249,10 @@ class Tag
         return $after;
     }
 
+    /**
+     * @param string[] $tags
+     * @return string[]
+     */
     public static function sanitize_array(array $tags): array
     {
         global $page;
@@ -144,7 +260,7 @@ class Tag
         foreach ($tags as $tag) {
             try {
                 $tag = Tag::sanitize($tag);
-            } catch (Exception $e) {
+            } catch (UserError $e) {
                 $page->flash($e->getMessage());
                 continue;
             }
@@ -159,7 +275,7 @@ class Tag
     public static function sqlify(string $term): string
     {
         global $database;
-        if ($database->get_driver_name() === DatabaseDriver::SQLITE) {
+        if ($database->get_driver_id() === DatabaseDriverID::SQLITE) {
             $term = str_replace('\\', '\\\\', $term);
         }
         $term = str_replace('_', '\_', $term);
@@ -167,54 +283,5 @@ class Tag
         $term = str_replace('*', '%', $term);
         // $term = str_replace("?", "_", $term);
         return $term;
-    }
-
-    /**
-     * Kind of like urlencode, but using a custom scheme so that
-     * tags always fit neatly between slashes in a URL. Use this
-     * when you want to put an arbitrary tag into a URL.
-     */
-    public static function caret(string $input): string
-    {
-        $to_caret = [
-            "^" => "^",
-            "/" => "s",
-            "\\" => "b",
-            "?" => "q",
-            "&" => "a",
-            "." => "d",
-        ];
-
-        foreach ($to_caret as $from => $to) {
-            $input = str_replace($from, '^' . $to, $input);
-        }
-        return $input;
-    }
-
-    /**
-     * Use this when you want to get a tag out of a URL
-     */
-    public static function decaret(string $str): string
-    {
-        $from_caret = [
-            "^" => "^",
-            "s" => "/",
-            "b" => "\\",
-            "q" => "?",
-            "a" => "&",
-            "d" => ".",
-        ];
-
-        $out = "";
-        $length = strlen($str);
-        for ($i=0; $i<$length; $i++) {
-            if ($str[$i] == "^") {
-                $i++;
-                $out .= $from_caret[$str[$i]] ?? '';
-            } else {
-                $out .= $str[$i];
-            }
-        }
-        return $out;
     }
 }

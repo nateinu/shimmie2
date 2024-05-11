@@ -2,20 +2,25 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class PixelFileHandler extends DataHandlerExtension
 {
     protected array $SUPPORTED_MIME = [MimeType::JPEG, MimeType::GIF, MimeType::PNG, MimeType::WEBP];
 
     protected function media_check_properties(MediaCheckPropertiesEvent $event): void
     {
-        $event->image->lossless = Media::is_lossless($event->file_name, $event->mime);
+        $filename = $event->image->get_image_filename();
+        $mime = $event->image->get_mime();
+
+        $event->image->lossless = Media::is_lossless($filename, $mime);
         $event->image->audio = false;
-        switch ($event->mime) {
+        switch ($mime) {
             case MimeType::GIF:
-                $event->image->video = MimeType::is_animated_gif($event->file_name);
+                $event->image->video = MimeType::is_animated_gif($filename);
                 break;
             case MimeType::WEBP:
-                $event->image->video = MimeType::is_animated_webp($event->file_name);
+                $event->image->video = MimeType::is_animated_webp($filename);
                 break;
             default:
                 $event->image->video = false;
@@ -23,7 +28,7 @@ class PixelFileHandler extends DataHandlerExtension
         }
         $event->image->image = !$event->image->video;
 
-        $info = getimagesize($event->file_name);
+        $info = getimagesize($event->image->get_image_filename());
         if ($info) {
             $event->image->width = $info[0];
             $event->image->height = $info[1];
@@ -37,30 +42,20 @@ class PixelFileHandler extends DataHandlerExtension
         return $info && in_array($info[2], $valid);
     }
 
-    protected function create_thumb(string $hash, string $mime): bool
+    protected function create_thumb(Image $image): bool
     {
         try {
-            create_image_thumb($hash, $mime);
+            create_image_thumb($image);
             return true;
-        } catch (InsufficientMemoryException $e) {
-            $tsize = get_thumbnail_max_size_scaled();
-            $thumb = imagecreatetruecolor($tsize[0], min($tsize[1], 64));
-            $white = imagecolorallocate($thumb, 255, 255, 255);
-            $black = imagecolorallocate($thumb, 0, 0, 0);
-            imagefill($thumb, 0, 0, $white);
-            log_warning("handle_pixel", "Insufficient memory while creating thumbnail: ".$e->getMessage());
-            imagestring($thumb, 5, 10, 24, "Image Too Large :(", $black);
-            return true;
-        } catch (Exception $e) {
-            log_error("handle_pixel", "Error while creating thumbnail: ".$e->getMessage());
-            return false;
+        } catch (\Exception $e) {
+            throw new UploadException("Error while creating thumbnail: ".$e->getMessage());
         }
     }
 
-    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
+    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event): void
     {
         if ($event->context == "view") {
-            $event->add_part("
+            $event->add_part(\MicroHTML\rawHTML("
                 <form>
                     <select class='shm-zoomer'>
                         <option value='full'>Full Size</option>
@@ -69,7 +64,7 @@ class PixelFileHandler extends DataHandlerExtension
                         <option value='both'>Fit Both</option>
                     </select>
                 </form>
-            ", 20);
+            "), 20);
         }
     }
 }

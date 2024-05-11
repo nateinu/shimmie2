@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class MimeMap
 {
     public const MAP_NAME = 'name';
@@ -233,6 +235,9 @@ class MimeMap
         ],
     ];
 
+    /**
+     * @return array{name: string, ext: string[], mime: string[]}
+     */
     public static function get_for_extension(string $ext): ?array
     {
         $ext = strtolower($ext);
@@ -245,6 +250,9 @@ class MimeMap
         return null;
     }
 
+    /**
+     * @return array{name: string, ext: string[], mime: string[]}
+     */
     public static function get_for_mime(string $mime): ?array
     {
         $mime = strtolower(MimeType::remove_parameters($mime));
@@ -260,7 +268,7 @@ class MimeMap
     public static function get_name_for_mime(string $mime): ?string
     {
         $data = self::get_for_mime($mime);
-        if ($data!==null) {
+        if ($data !== null) {
             return $data[self::MAP_NAME];
         }
         return null;

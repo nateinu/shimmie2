@@ -2,9 +2,17 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class LogLogstash extends Extension
 {
-    public function onLog(LogEvent $event)
+    public function onInitExt(InitExtEvent $event): void
+    {
+        global $config;
+        $config->set_default_string("log_logstash_host", "127.0.0.1:1234");
+    }
+
+    public function onLog(LogEvent $event): void
     {
         global $user;
 
@@ -21,17 +29,20 @@ class LogLogstash extends Extension
                 #"@request" => $_SERVER,
                 "@request" => [
                     "UID" => get_request_id(),
-                    "REMOTE_ADDR" => $_SERVER['REMOTE_ADDR'],
+                    "REMOTE_ADDR" => get_real_ip(),
                 ],
             ];
 
             $this->send_data($data);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             // we can't log that logging is broken
         }
     }
 
-    private function send_data($data)
+    /**
+     * @param array<string, mixed> $data
+     */
+    private function send_data(array $data): void
     {
         global $config;
 
@@ -45,12 +56,12 @@ class LogLogstash extends Extension
             $host = $parts[0];
             $port = (int)$parts[1];
             $fp = fsockopen("udp://$host", $port, $errno, $errstr);
-            if (! $fp) {
+            if (!$fp) {
                 return;
             }
-            fwrite($fp, json_encode($data));
+            fwrite($fp, \Safe\json_encode($data));
             fclose($fp);
-        } catch (Exception $e) {
+        } catch (\Exception $e) {
             // we can't log that logging is broken
         }
     }

@@ -1,9 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class UploadTest extends ShimmiePHPUnitTestCase
 {
-    public function testUploadPage()
+    public function testUploadPage(): void
     {
         $this->log_in_as_user();
 
@@ -12,7 +15,7 @@ class UploadTest extends ShimmiePHPUnitTestCase
     }
 
     // Because $this->post_image() sends the event directly
-    public function testRawUpload()
+    public function testRawUpload(): void
     {
         global $database;
 
@@ -40,38 +43,15 @@ class UploadTest extends ShimmiePHPUnitTestCase
                 'size' => [0],
             ]
         ];
-        $page = $this->post_page("upload", ["tags0"=>"foo bar"]);
+        $page = $this->post_page("upload", ["tags0" => "foo bar"]);
         $this->assert_response(302);
-        $this->assertStringStartsWith("/test/post/list/poster=test/1", $page->redirect);
-
         $this->assertEquals(4, $database->get_one("SELECT COUNT(*) FROM images"));
+        // FIXME: image IDs get allocated even when transactions are rolled back,
+        // so these IDs are not necessarily correct
+        // $this->assertStringStartsWith("/test/post/list/id%3D4%2C3%2C2%2C1/1", $page->redirect);
     }
 
-    public function testRawReplace()
-    {
-        global $database;
-
-        $this->log_in_as_admin();
-        $image_id = $this->post_image("tests/pbx_screenshot.jpg", "pbx computer screenshot");
-
-        $_FILES = [
-            'data' => [
-                'name' => ['puppy-hugs.jpg'],
-                'type' => ['image/jpeg'],
-                'tmp_name' => ['tests/bedroom_workshop.jpg'],
-                'error' => [0],
-                'size' => [271386],
-            ]
-        ];
-
-        $page = $this->post_page("upload/replace", ["image_id"=>$image_id]);
-        $this->assert_response(302);
-        $this->assertEquals("/test/post/view/$image_id", $page->redirect);
-
-        $this->assertEquals(1, $database->get_one("SELECT COUNT(*) FROM images"));
-    }
-
-    public function testUpload()
+    public function testUpload(): void
     {
         $this->log_in_as_user();
         $image_id = $this->post_image("tests/pbx_screenshot.jpg", "pbx computer screenshot");
@@ -81,33 +61,30 @@ class UploadTest extends ShimmiePHPUnitTestCase
         $this->assert_title("Post $image_id: computer pbx screenshot");
     }
 
-    public function testRejectDupe()
+    public function testRejectDupe(): void
     {
         $this->post_image("tests/pbx_screenshot.jpg", "pbx computer screenshot");
 
-        try {
+        $e = $this->assertException(UploadException::class, function () {
             $this->post_image("tests/pbx_screenshot.jpg", "pbx computer screenshot");
-        } catch (UploadException $e) {
-            $this->assertStringContainsString("already has hash", $e->getMessage());
-        }
+        });
+        $this->assertStringContainsString("already has hash", $e->getMessage());
     }
 
-    public function testRejectUnknownFiletype()
+    public function testRejectUnknownFiletype(): void
     {
-        $image_id = $this->post_image("index.php", "test");
-        $this->assertEquals(-1, $image_id);  // no file handler claimed this
+        $this->expectException(\Exception::class);
+        $this->post_image("index.php", "test");
     }
 
-    public function testRejectHuge()
+    public function testRejectHuge(): void
     {
         // FIXME: huge.dat is rejected for other reasons; manual testing shows that this works
-        file_put_contents("data/huge.jpg", file_get_contents("tests/pbx_screenshot.jpg") . str_repeat("U", 1024*1024*3));
-        try {
+        file_put_contents("data/huge.jpg", \Safe\file_get_contents("tests/pbx_screenshot.jpg") . str_repeat("U", 1024 * 1024 * 3));
+        $e = $this->assertException(UploadException::class, function () {
             $this->post_image("data/huge.jpg", "test");
-            $this->assertTrue(false, "Uploading huge.jpg didn't fail...");
-        } catch (UploadException $e) {
-            $this->assertEquals("File too large (3.0MB > 1.0MB)", $e->error);
-        }
+        });
         unlink("data/huge.jpg");
+        $this->assertEquals("File too large (3.0MB > 1.0MB)", $e->getMessage());
     }
 }

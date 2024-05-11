@@ -1,15 +1,19 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class DowntimeTest extends ShimmiePHPUnitTestCase
 {
     public function tearDown(): void
     {
         global $config;
         $config->set_bool("downtime", false);
+        parent::tearDown();
     }
 
-    public function testDowntime()
+    public function testDowntime(): void
     {
         global $config;
 

@@ -2,6 +2,12 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+use function MicroHTML\{A,B,BR,IMG,emptyHTML,joinHTML};
+
 /**
  * Class BaseThemelet
  *
@@ -32,27 +38,18 @@ class BaseThemelet
     }
 
     /**
-     * A specific, common error message
-     */
-    public function display_permission_denied(): void
-    {
-        $this->display_error(403, "Permission Denied", "You do not have permission to access this page");
-    }
-
-
-    /**
      * Generic thumbnail code; returns HTML rather than adding
      * a block since thumbs tend to go inside blocks...
      */
-    public function build_thumb_html(Image $image): string
+    public function build_thumb_html(Image $image): HTMLElement
     {
         global $config;
 
-        $i_id = (int) $image->id;
-        $h_view_link = make_link('post/view/'.$i_id);
-        $h_thumb_link = $image->get_thumb_link();
-        $h_tip = html_escape($image->get_tooltip());
-        $h_tags = html_escape(strtolower($image->get_tag_list()));
+        $id = $image->id;
+        $view_link = make_link('post/view/'.$id);
+        $thumb_link = $image->get_thumb_link();
+        $tip = $image->get_tooltip();
+        $tags = strtolower($image->get_tag_list());
 
         // TODO: Set up a function for fetching what kind of files are currently thumbnailable
         $mimeArr = array_flip([MimeType::MP3]); //List of thumbless filetypes
@@ -64,21 +61,44 @@ class BaseThemelet
         }
 
         $custom_classes = "";
-        if (class_exists("Relationships")) {
-            if (property_exists($image, 'parent_id') && $image->parent_id !== null) {
+        if (Extension::is_enabled(RelationshipsInfo::KEY)) {
+            if ($image['parent_id'] !== null) {
                 $custom_classes .= "shm-thumb-has_parent ";
             }
-            if (property_exists($image, 'has_children') && bool_escape($image->has_children)) {
+            if ($image['has_children']) {
                 $custom_classes .= "shm-thumb-has_child ";
             }
         }
 
-        return "<a href='$h_view_link' class='thumb shm-thumb shm-thumb-link {$custom_classes}' data-tags='$h_tags' data-height='$image->height' data-width='$image->width' data-mime='{$image->get_mime()}' data-post-id='$i_id'>".
-                "<img id='thumb_$i_id' title='$h_tip' alt='$h_tip' height='{$tsize[1]}' width='{$tsize[0]}' src='$h_thumb_link'>".
-                "</a>\n";
+        $attrs = [
+            "href" => $view_link,
+            "class" => "thumb shm-thumb shm-thumb-link $custom_classes",
+            "data-tags" => $tags,
+            "data-height" => $image->height,
+            "data-width" => $image->width,
+            "data-mime" => $image->get_mime(),
+            "data-post-id" => $id,
+        ];
+        if(Extension::is_enabled(RatingsInfo::KEY)) {
+            $attrs["data-rating"] = $image['rating'];
+        }
+
+        return A(
+            $attrs,
+            IMG(
+                [
+                    "id" => "thumb_$id",
+                    "title" => $tip,
+                    "alt" => $tip,
+                    "height" => $tsize[1],
+                    "width" => $tsize[0],
+                    "src" => $thumb_link,
+                ]
+            )
+        );
     }
 
-    public function display_paginator(Page $page, string $base, ?string $query, int $page_number, int $total_pages, bool $show_random = false)
+    public function display_paginator(Page $page, string $base, ?string $query, int $page_number, int $total_pages, bool $show_random = false): void
     {
         if ($total_pages == 0) {
             $total_pages = 1;
@@ -88,35 +108,30 @@ class BaseThemelet
 
         $page->add_html_header("<link rel='first' href='".make_http(make_link($base.'/1', $query))."'>");
         if ($page_number < $total_pages) {
-            $page->add_html_header("<link rel='prefetch' href='".make_http(make_link($base.'/'.($page_number+1), $query))."'>");
-            $page->add_html_header("<link rel='next' href='".make_http(make_link($base.'/'.($page_number+1), $query))."'>");
+            $page->add_html_header("<link rel='prefetch' href='".make_http(make_link($base.'/'.($page_number + 1), $query))."'>");
+            $page->add_html_header("<link rel='next' href='".make_http(make_link($base.'/'.($page_number + 1), $query))."'>");
         }
         if ($page_number > 1) {
-            $page->add_html_header("<link rel='previous' href='".make_http(make_link($base.'/'.($page_number-1), $query))."'>");
+            $page->add_html_header("<link rel='previous' href='".make_http(make_link($base.'/'.($page_number - 1), $query))."'>");
         }
         $page->add_html_header("<link rel='last' href='".make_http(make_link($base.'/'.$total_pages, $query))."'>");
     }
 
-    private function gen_page_link(string $base_url, ?string $query, int $page, string $name): string
+    private function gen_page_link(string $base_url, ?string $query, int $page, string $name): HTMLElement
     {
-        $link = make_link($base_url.'/'.$page, $query);
-        return '<a href="'.$link.'">'.$name.'</a>';
+        return A(["href" => make_link($base_url.'/'.$page, $query)], $name);
     }
 
-    private function gen_page_link_block(string $base_url, ?string $query, int $page, int $current_page, string $name): string
+    private function gen_page_link_block(string $base_url, ?string $query, int $page, int $current_page, string $name): HTMLElement
     {
-        $paginator = "";
+        $paginator = $this->gen_page_link($base_url, $query, $page, $name);
         if ($page == $current_page) {
-            $paginator .= "<b>";
-        }
-        $paginator .= $this->gen_page_link($base_url, $query, $page, $name);
-        if ($page == $current_page) {
-            $paginator .= "</b>";
+            $paginator = B($paginator);
         }
         return $paginator;
     }
 
-    private function build_paginator(int $current_page, int $total_pages, string $base_url, ?string $query, bool $show_random): string
+    private function build_paginator(int $current_page, int $total_pages, string $base_url, ?string $query, bool $show_random): HTMLElement
     {
         $next = $current_page + 1;
         $prev = $current_page - 1;
@@ -136,16 +151,36 @@ class BaseThemelet
         $next_html   = $at_end ? "Next" : $this->gen_page_link($base_url, $query, $next, "Next");
         $last_html   = $at_end ? "Last" : $this->gen_page_link($base_url, $query, $total_pages, "Last");
 
-        $start = $current_page-5 > 1 ? $current_page-5 : 1;
-        $end = $start+10 < $total_pages ? $start+10 : $total_pages;
+        $start = max($current_page - 5, 1);
+        $end = min($start + 10, $total_pages);
 
         $pages = [];
         foreach (range($start, $end) as $i) {
             $pages[] = $this->gen_page_link_block($base_url, $query, $i, $current_page, (string)$i);
         }
-        $pages_html = implode(" | ", $pages);
+        $pages_html = joinHTML(" | ", $pages);
 
-        return $first_html.' | '.$prev_html.' | '.$random_html.' | '.$next_html.' | '.$last_html
-                .'<br>&lt;&lt; '.$pages_html.' &gt;&gt;';
+        return emptyHTML(
+            joinHTML(" | ", [
+                $first_html,
+                $prev_html,
+                $random_html,
+                $next_html,
+                $last_html,
+            ]),
+            BR(),
+            '<< ',
+            $pages_html,
+            ' >>'
+        );
+    }
+
+    public function display_crud(string $title, HTMLElement $table, HTMLElement $paginator): void
+    {
+        global $page;
+        $page->set_title($title);
+        $page->set_heading($title);
+        $page->add_block(new NavBlock());
+        $page->add_block(new Block("$title Table", emptyHTML($table, $paginator)));
     }
 }

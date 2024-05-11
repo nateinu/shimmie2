@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\
 * Misc functions                                                            *
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -9,51 +12,43 @@ declare(strict_types=1);
  * Add a directory full of images
  *
  * @param string $base
- * @return array
+ * @param string[] $extra_tags
+ * @return UploadResult[]
  */
-function add_dir(string $base): array
+function add_dir(string $base, array $extra_tags = []): array
 {
+    global $database;
     $results = [];
 
     foreach (list_files($base) as $full_path) {
         $short_path = str_replace($base, "", $full_path);
         $filename = basename($full_path);
 
-        $tags = path_to_tags($short_path);
-        $result = "$short_path (".str_replace(" ", ", ", $tags).")... ";
+        $tags = array_merge(path_to_tags($short_path), $extra_tags);
         try {
-            add_image($full_path, $filename, $tags);
-            $result .= "ok";
+            $more_results = $database->with_savepoint(function () use ($full_path, $filename, $tags) {
+                $dae = send_event(new DataUploadEvent($full_path, basename($full_path), 0, [
+                    'filename' => pathinfo($filename, PATHINFO_BASENAME),
+                    'tags' => Tag::implode($tags),
+                ]));
+                $results = [];
+                foreach($dae->images as $image) {
+                    $results[] = new UploadSuccess($filename, $image->id);
+                }
+                return $results;
+            });
+            $results = array_merge($results, $more_results);
         } catch (UploadException $ex) {
-            $result .= "failed: ".$ex->getMessage();
+            $results[] = new UploadError($filename, $ex->getMessage());
         }
-        $results[] = $result;
     }
 
     return $results;
 }
 
-/**
- * Sends a DataUploadEvent for a file.
- */
-function add_image(string $tmpname, string $filename, string $tags): int
+function get_file_ext(string $filename): ?string
 {
-    assert(file_exists($tmpname));
-
-    $pathinfo = pathinfo($filename);
-    $metadata = [];
-    $metadata['filename'] = $pathinfo['basename'];
-    if (array_key_exists('extension', $pathinfo)) {
-        $metadata['extension'] = $pathinfo['extension'];
-    }
-
-    $metadata['tags'] = Tag::explode($tags);
-    $metadata['source'] = null;
-
-    $due = new DataUploadEvent($tmpname, $metadata);
-    send_event($due);
-
-    return $due->image_id;
+    return pathinfo($filename)['extension'] ?? null;
 }
 
 /**
@@ -64,7 +59,7 @@ function add_image(string $tmpname, string $filename, string $tags): int
  * @param int $orig_width
  * @param int $orig_height
  * @param bool $use_dpi_scaling Enables the High-DPI scaling.
- * @return array
+ * @return array{0: int, 1: int}
  */
 function get_thumbnail_size(int $orig_width, int $orig_height, bool $use_dpi_scaling = false): array
 {
@@ -112,53 +107,60 @@ function get_thumbnail_size(int $orig_width, int $orig_height, bool $use_dpi_sca
     }
 }
 
+/**
+ * @return array{0: int, 1: int, 2: float}
+ */
 function get_scaled_by_aspect_ratio(int $original_width, int $original_height, int $max_width, int $max_height): array
 {
-    $xscale = ($max_width/ $original_width);
-    $yscale = ($max_height/ $original_height);
+    $xscale = ($max_width / $original_width);
+    $yscale = ($max_height / $original_height);
 
     $scale = ($yscale < $xscale) ? $yscale : $xscale ;
 
-    return [(int)($original_width*$scale), (int)($original_height*$scale), $scale];
+    return [(int)($original_width * $scale), (int)($original_height * $scale), $scale];
 }
 
 /**
  * Fetches the thumbnails height and width settings and applies the High-DPI scaling setting before returning the dimensions.
  *
- * @return array [width, height]
+ * @return array{0: int, 1: int}
  */
 function get_thumbnail_max_size_scaled(): array
 {
     global $config;
 
     $scaling = $config->get_int(ImageConfig::THUMB_SCALING);
-    $max_width  = $config->get_int(ImageConfig::THUMB_WIDTH) * ($scaling/100);
-    $max_height = $config->get_int(ImageConfig::THUMB_HEIGHT) * ($scaling/100);
+    $max_width  = $config->get_int(ImageConfig::THUMB_WIDTH) * ($scaling / 100);
+    $max_height = $config->get_int(ImageConfig::THUMB_HEIGHT) * ($scaling / 100);
     return [$max_width, $max_height];
 }
 
 
-function create_image_thumb(string $hash, string $mime, string $engine = null)
+function create_image_thumb(Image $image, string $engine = null): void
 {
     global $config;
-
-    $inname = warehouse_path(Image::IMAGE_DIR, $hash);
-    $outname = warehouse_path(Image::THUMBNAIL_DIR, $hash);
-    $tsize = get_thumbnail_max_size_scaled();
     create_scaled_image(
-        $inname,
-        $outname,
-        $tsize,
-        $mime,
+        $image->get_image_filename(),
+        $image->get_thumb_filename(),
+        get_thumbnail_max_size_scaled(),
+        $image->get_mime(),
         $engine,
         $config->get_string(ImageConfig::THUMB_FIT)
     );
 }
 
 
-
-function create_scaled_image(string $inname, string $outname, array $tsize, string $mime, ?string $engine = null, ?string $resize_type = null)
-{
+/**
+ * @param array{0: int, 1: int} $tsize
+ */
+function create_scaled_image(
+    string $inname,
+    string $outname,
+    array $tsize,
+    string $mime,
+    ?string $engine = null,
+    ?string $resize_type = null
+): void {
     global $config;
     if (empty($engine)) {
         $engine = $config->get_string(ImageConfig::THUMB_ENGINE);
@@ -185,13 +187,13 @@ function create_scaled_image(string $inname, string $outname, array $tsize, stri
     ));
 }
 
-function redirect_to_next_image(Image $image): void
+function redirect_to_next_image(Image $image, ?string $search = null): void
 {
     global $page;
 
-    if (isset($_GET['search'])) {
-        $search_terms = Tag::explode(Tag::decaret($_GET['search']));
-        $query = "search=" . url_escape($_GET['search']);
+    if (!is_null($search)) {
+        $search_terms = Tag::explode($search);
+        $query = "search=" . url_escape($search);
     } else {
         $search_terms = [];
         $query = null;
@@ -199,8 +201,8 @@ function redirect_to_next_image(Image $image): void
 
     $target_image = $image->get_next($search_terms);
 
-    if ($target_image == null) {
-        $redirect_target = referer_or(make_link("post/list"), ['post/view']);
+    if ($target_image === null) {
+        $redirect_target = referer_or(search_link(), ['post/view']);
     } else {
         $redirect_target = make_link("post/view/{$target_image->id}", null, $query);
     }

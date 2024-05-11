@@ -2,10 +2,17 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
 
 class BBCode extends FormatterExtension
 {
     public function format(string $text): string
+    {
+        $text = $this->_format($text);
+        return "<span class='bbcode'>$text</span>";
+    }
+
+    public function _format(string $text): string
     {
         $text = $this->extract_code($text);
         foreach ([
@@ -96,8 +103,8 @@ class BBCode extends FormatterExtension
             }
 
             $beginning = substr($text, 0, $start);
-            $middle = str_rot13(substr($text, $start+$l1, ($end-$start-$l1)));
-            $ending = substr($text, $end + $l2, (strlen($text)-$end+$l2));
+            $middle = str_rot13(substr($text, $start + $l1, ($end - $start - $l1)));
+            $ending = substr($text, $end + $l2, (strlen($text) - $end + $l2));
 
             $text = $beginning . $middle . $ending;
         }
@@ -130,8 +137,8 @@ class BBCode extends FormatterExtension
             }
 
             $beginning = substr($text, 0, $start);
-            $middle = base64_encode(substr($text, $start+$l1, ($end-$start-$l1)));
-            $ending = substr($text, $end + $l2, (strlen($text)-$end+$l2));
+            $middle = base64_encode(substr($text, $start + $l1, ($end - $start - $l1)));
+            $ending = substr($text, $end + $l2, (strlen($text) - $end + $l2));
 
             $text = $beginning . "[code!]" . $middle . "[/code!]" . $ending;
         }
@@ -154,10 +161,10 @@ class BBCode extends FormatterExtension
             }
 
             $beginning = substr($text, 0, $start);
-            $middle = base64_decode(substr($text, $start+$l1, ($end-$start-$l1)));
-            $ending = substr($text, $end + $l2, (strlen($text)-$end+$l2));
+            $middle = base64_decode(substr($text, $start + $l1, ($end - $start - $l1)));
+            $ending = substr($text, $end + $l2, (strlen($text) - $end + $l2));
 
-            $text = $beginning . "<pre>" . $middle . "</pre>" . $ending;
+            $text = $beginning . "<pre class='code'>" . $middle . "</pre>" . $ending;
         }
         return $text;
     }

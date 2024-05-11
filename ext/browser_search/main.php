@@ -2,15 +2,17 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class BrowserSearch extends Extension
 {
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
         global $config;
         $config->set_default_string("search_suggestions_results_order", 'a');
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $config, $database, $page;
 
@@ -24,9 +26,9 @@ class BrowserSearch extends Extension
         if ($event->page_matches("browser_search.xml")) {
             // First, we need to build all the variables we'll need
             $search_title = $config->get_string(SetupConfig::TITLE);
-            $search_form_url =  make_link('post/list/{searchTerms}');
+            $search_form_url =  search_link(['{searchTerms}']);
             $suggenton_url = make_link('browser_search/')."{searchTerms}";
-            $icon_b64 = base64_encode(file_get_contents("ext/static_files/static/favicon.ico"));
+            $icon_b64 = base64_encode(\Safe\file_get_contents("ext/static_files/static/favicon.ico"));
 
             // Now for the XML
             $xml = "
@@ -46,14 +48,14 @@ class BrowserSearch extends Extension
             $page->set_mode(PageMode::DATA);
             $page->set_mime(MimeType::XML);
             $page->set_data($xml);
-        } elseif ($event->page_matches("browser_search")) {
+        } elseif ($event->page_matches("browser_search/{tag_search}")) {
             $suggestions = $config->get_string("search_suggestions_results_order");
             if ($suggestions == "n") {
                 return;
             }
 
             // We have to build some json stuff
-            $tag_search = $event->get_arg(0);
+            $tag_search = $event->get_arg('tag_search');
 
             // Now to get DB results
             if ($suggestions == "a") {
@@ -63,17 +65,17 @@ class BrowserSearch extends Extension
             }
             $tags = $database->get_col(
                 "SELECT tag FROM tags WHERE tag LIKE :tag AND count > 0 ORDER BY $order LIMIT 30",
-                ['tag'=>$tag_search."%"]
+                ['tag' => $tag_search."%"]
             );
 
             // And to do stuff with it. We want our output to look like:
             // ["shimmie",["shimmies","shimmy","shimmie","21 shimmies","hip shimmies","skea shimmies"],[],[]]
             $page->set_mode(PageMode::DATA);
-            $page->set_data(json_encode([$tag_search, $tags, [], []]));
+            $page->set_data(\Safe\json_encode([$tag_search, $tags, [], []]));
         }
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $sort_by = [];
         $sort_by['Alphabetical'] = 'a';

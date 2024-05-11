@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 abstract class TrashConfig
 {
     public const VERSION = "ext_trash_version";
@@ -10,7 +12,7 @@ abstract class TrashConfig
 class Trash extends Extension
 {
     /** @var TrashTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
     public function get_priority(): int
     {
@@ -18,25 +20,17 @@ class Trash extends Extension
         return 10;
     }
 
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
-        Image::$bool_props[] = "trash";
+        Image::$prop_types["trash"] = ImagePropType::BOOL;
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user;
 
-        if ($event->page_matches("trash_restore") && $user->can(Permissions::VIEW_TRASH)) {
-            // Try to get the image ID
-            if ($event->count_args() >= 1) {
-                $image_id = int_escape($event->get_arg(0));
-            } elseif (isset($_POST['image_id'])) {
-                $image_id = $_POST['image_id'];
-            } else {
-                throw new SCoreException("Can not restore post: No valid Post ID given.");
-            }
-
+        if ($event->page_matches("trash_restore/{image_id}", method: "POST", permission: Permissions::VIEW_TRASH)) {
+            $image_id = $event->get_iarg('image_id');
             self::set_trash($image_id, false);
             $page->set_mode(PageMode::REDIRECT);
             $page->set_redirect(make_link("post/view/".$image_id));
@@ -47,59 +41,67 @@ class Trash extends Extension
     {
         global $user;
 
-        if ($image->trash===true && !$user->can(Permissions::VIEW_TRASH)) {
+        if ($image['trash'] === true && !$user->can(Permissions::VIEW_TRASH)) {
             return false;
         }
         return true;
     }
 
-    public function onImageDownloading(ImageDownloadingEvent $event)
+    public function onImageDownloading(ImageDownloadingEvent $event): void
     {
         /**
          * Deny images upon insufficient permissions.
          **/
         if (!$this->check_permissions($event->image)) {
-            throw new SCoreException("Access denied");
+            throw new PermissionDenied("Access denied");
         }
     }
 
-    public function onDisplayingImage(DisplayingImageEvent $event)
+    public function onDisplayingImage(DisplayingImageEvent $event): void
     {
         global $page;
 
         if (!$this->check_permissions(($event->image))) {
             $page->set_mode(PageMode::REDIRECT);
-            $page->set_redirect(make_link("post/list"));
+            $page->set_redirect(make_link());
         }
     }
 
-    public function onImageDeletion(ImageDeletionEvent $event)
+    public function onImageDeletion(ImageDeletionEvent $event): void
     {
-        if ($event->force!==true && $event->image->trash!==true) {
+        if ($event->force !== true && $event->image['trash'] !== true) {
             self::set_trash($event->image->id, true);
             $event->stop_processing = true;
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent=="posts") {
+        if ($event->parent == "posts") {
             if ($user->can(Permissions::VIEW_TRASH)) {
                 $event->add_nav_link("posts_trash", new Link('/post/list/in%3Atrash/1'), "Trash", null, 60);
             }
         }
     }
 
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
+    {
+        global $user;
+        if ($user->can(Permissions::VIEW_TRASH)) {
+            $event->add_link("Trash", search_link(["in:trash"]), 60);
+        }
+    }
+
     public const SEARCH_REGEXP = "/^in:trash$/";
-    public function onSearchTermParse(SearchTermParseEvent $event)
+    public function onSearchTermParse(SearchTermParseEvent $event): void
     {
         global $user;
 
         $matches = [];
 
         if (is_null($event->term) && $this->no_trash_query($event->context)) {
-            $event->add_querylet(new Querylet("trash != :true", ["true"=>true]));
+            $event->add_querylet(new Querylet("trash != :true", ["true" => true]));
         }
 
         if (is_null($event->term)) {
@@ -107,15 +109,15 @@ class Trash extends Extension
         }
         if (preg_match(self::SEARCH_REGEXP, strtolower($event->term), $matches)) {
             if ($user->can(Permissions::VIEW_TRASH)) {
-                $event->add_querylet(new Querylet("trash = :true", ["true"=>true]));
+                $event->add_querylet(new Querylet("trash = :true", ["true" => true]));
             }
         }
     }
 
-    public function onHelpPageBuilding(HelpPageBuildingEvent $event)
+    public function onHelpPageBuilding(HelpPageBuildingEvent $event): void
     {
         global $user;
-        if ($event->key===HelpPages::SEARCH) {
+        if ($event->key === HelpPages::SEARCH) {
             if ($user->can(Permissions::VIEW_TRASH)) {
                 $block = new Block();
                 $block->header = "Trash";
@@ -125,6 +127,9 @@ class Trash extends Extension
         }
     }
 
+    /**
+     * @param string[] $context
+     */
     private function no_trash_query(array $context): bool
     {
         foreach ($context as $term) {
@@ -135,33 +140,33 @@ class Trash extends Extension
         return true;
     }
 
-    public static function set_trash(int $image_id, bool $trash)
+    public static function set_trash(int $image_id, bool $trash): void
     {
         global $database;
 
         $database->execute(
             "UPDATE images SET trash = :trash WHERE id = :id",
-            ["trash"=>$trash,"id"=>$image_id]
+            ["trash" => $trash,"id" => $image_id]
         );
     }
-    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
+    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event): void
     {
         global $user;
-        if ($event->image->trash===true && $user->can(Permissions::VIEW_TRASH)) {
-            $event->add_part($this->theme->get_image_admin_html($event->image->id));
+        if ($event->image['trash'] === true && $user->can(Permissions::VIEW_TRASH)) {
+            $event->add_button("Restore From Trash", "trash_restore/".$event->image->id);
         }
     }
 
-    public function onBulkActionBlockBuilding(BulkActionBlockBuildingEvent $event)
+    public function onBulkActionBlockBuilding(BulkActionBlockBuildingEvent $event): void
     {
         global $user;
 
-        if ($user->can(Permissions::VIEW_TRASH)&&in_array("in:trash", $event->search_terms)) {
+        if ($user->can(Permissions::VIEW_TRASH) && in_array("in:trash", $event->search_terms)) {
             $event->add_action("bulk_trash_restore", "(U)ndelete", "u");
         }
     }
 
-    public function onBulkAction(BulkActionEvent $event)
+    public function onBulkAction(BulkActionEvent $event): void
     {
         global $page, $user;
 
@@ -179,7 +184,7 @@ class Trash extends Extension
         }
     }
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 

@@ -1,14 +1,17 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 use function MicroHTML\INPUT;
 
 class TagToolsTheme extends Themelet
 {
-    protected function button(string $name, string $action, bool $protected=false): string
+    protected function button(string $name, string $action, bool $protected = false): string
     {
         $c_protected = $protected ? " protected" : "";
-        $html = make_form(make_link("admin/$action"), "POST", false, "admin$c_protected");
+        $html = make_form(make_link("admin/$action"), multipart: false, form_id: "admin$c_protected");
         if ($protected) {
             $html .= "<input type='submit' id='$action' value='$name' disabled='disabled'>";
             $html .= "<input type='checkbox' onclick='$(\"#$action\").attr(\"disabled\", !$(this).is(\":checked\"))'>";
@@ -25,7 +28,7 @@ class TagToolsTheme extends Themelet
      *  'recount tag use'
      *  etc
      */
-    public function display_form()
+    public function display_form(): void
     {
         global $page;
 
@@ -36,7 +39,7 @@ class TagToolsTheme extends Themelet
 
         $html = (string)SHM_SIMPLE_FORM(
             "admin/set_tag_case",
-            INPUT(["type"=>'text', "name"=>'tag', "placeholder"=>'Enter tag with correct case', "class"=>'autocomplete_tags', "autocomplete"=>'off']),
+            INPUT(["type" => 'text', "name" => 'tag', "placeholder" => 'Enter tag with correct case', "autocomplete" => 'off']),
             SHM_SUBMIT('Set Tag Case'),
         );
         $page->add_block(new Block("Set Tag Case", $html));

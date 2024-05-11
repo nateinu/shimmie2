@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
-class ImageInfoBoxBuildingEvent extends Event
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+/**
+ * @extends PartListBuildingEvent<HTMLElement>
+ */
+class ImageInfoBoxBuildingEvent extends PartListBuildingEvent
 {
-    public array $parts = [];
     public Image $image;
     public User $user;
 
@@ -13,13 +19,5 @@ class ImageInfoBoxBuildingEvent extends Event
         parent::__construct();
         $this->image = $image;
         $this->user = $user;
-    }
-
-    public function add_part(string $html, int $position=50)
-    {
-        while (isset($this->parts[$position])) {
-            $position++;
-        }
-        $this->parts[$position] = $html;
     }
 }

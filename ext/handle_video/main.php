@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 abstract class VideoFileHandlerConfig
 {
     public const PLAYBACK_AUTOPLAY = "video_playback_autoplay";
@@ -24,7 +26,7 @@ class VideoFileHandler extends DataHandlerExtension
     ];
     protected array $SUPPORTED_MIME = self::SUPPORTED_MIME;
 
-    public function onInitExt(InitExtEvent $event)
+    public function onInitExt(InitExtEvent $event): void
     {
         global $config;
 
@@ -37,6 +39,9 @@ class VideoFileHandler extends DataHandlerExtension
         );
     }
 
+    /**
+     * @return array<string, string>
+     */
     private function get_options(): array
     {
         $output = [];
@@ -46,7 +51,7 @@ class VideoFileHandler extends DataHandlerExtension
         return $output;
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $sb = $event->panel->create_new_block("Video Options");
         $sb->start_table();
@@ -62,55 +67,47 @@ class VideoFileHandler extends DataHandlerExtension
         $event->image->video = true;
         $event->image->image = false;
         try {
-            $data = Media::get_ffprobe_data($event->file_name);
+            $data = Media::get_ffprobe_data($event->image->get_image_filename());
 
-            if (is_array($data)) {
-                if (array_key_exists("streams", $data)) {
-                    $video = false;
-                    $audio = false;
-                    $video_codec = null;
-                    $streams = $data["streams"];
-                    if (is_array($streams)) {
-                        foreach ($streams as $stream) {
-                            if (is_array($stream)) {
-                                if (array_key_exists("codec_type", $stream)) {
-                                    $type = $stream["codec_type"];
-                                    switch ($type) {
-                                        case "audio":
-                                            $audio = true;
-                                            break;
-                                        case "video":
-                                            $video = true;
-                                            $video_codec = $stream["codec_name"];
-                                            break;
-                                    }
-                                }
-                                if (array_key_exists("width", $stream) && !empty($stream["width"])
-                                    && is_numeric($stream["width"]) && intval($stream["width"]) > ($event->image->width) ?? 0) {
-                                    $event->image->width = intval($stream["width"]);
-                                }
-                                if (array_key_exists("height", $stream) && !empty($stream["height"])
-                                    && is_numeric($stream["height"]) && intval($stream["height"]) > ($event->image->height) ?? 0) {
-                                    $event->image->height = intval($stream["height"]);
+            if (array_key_exists("streams", $data)) {
+                $video = false;
+                $audio = false;
+                $video_codec = null;
+                $streams = $data["streams"];
+                if (is_array($streams)) {
+                    foreach ($streams as $stream) {
+                        if (is_array($stream)) {
+                            if (array_key_exists("codec_type", $stream)) {
+                                $type = $stream["codec_type"];
+                                switch ($type) {
+                                    case "audio":
+                                        $audio = true;
+                                        break;
+                                    case "video":
+                                        $video = true;
+                                        $video_codec = $stream["codec_name"];
+                                        break;
                                 }
                             }
+                            $event->image->width = max($event->image->width, @$stream["width"]);
+                            $event->image->height = max($event->image->height, @$stream["height"]);
                         }
-                        $event->image->video = $video;
-                        $event->image->video_codec = $video_codec;
-                        $event->image->audio = $audio;
-                        if ($event->image->get_mime()==MimeType::MKV &&
-                            VideoContainers::is_video_codec_supported(VideoContainers::WEBM, $event->image->video_codec)) {
-                            // WEBMs are MKVs with the VP9 or VP8 codec
-                            // For browser-friendliness, we'll just change the mime type
-                            $event->image->set_mime(MimeType::WEBM);
-                        }
+                    }
+                    $event->image->video = $video;
+                    $event->image->video_codec = $video_codec;
+                    $event->image->audio = $audio;
+                    if ($event->image->get_mime() == MimeType::MKV &&
+                        VideoContainers::is_video_codec_supported(VideoContainers::WEBM, $event->image->video_codec)) {
+                        // WEBMs are MKVs with the VP9 or VP8 codec
+                        // For browser-friendliness, we'll just change the mime type
+                        $event->image->set_mime(MimeType::WEBM);
                     }
                 }
-                if (array_key_exists("format", $data)&& is_array($data["format"])) {
-                    $format = $data["format"];
-                    if (array_key_exists("duration", $format) && is_numeric($format["duration"])) {
-                        $event->image->length = (int)floor(floatval($format["duration"]) * 1000);
-                    }
+            }
+            if (array_key_exists("format", $data) && is_array($data["format"])) {
+                $format = $data["format"];
+                if (array_key_exists("duration", $format) && is_numeric($format["duration"])) {
+                    $event->image->length = (int)floor(floatval($format["duration"]) * 1000);
                 }
             }
         } catch (MediaException $e) {
@@ -127,9 +124,9 @@ class VideoFileHandler extends DataHandlerExtension
         return MimeType::matches_array($mime, $enabled_formats, true);
     }
 
-    protected function create_thumb(string $hash, string $mime): bool
+    protected function create_thumb(Image $image): bool
     {
-        return Media::create_thumbnail_ffmpeg($hash);
+        return Media::create_thumbnail_ffmpeg($image);
     }
 
     protected function check_contents(string $tmpname): bool

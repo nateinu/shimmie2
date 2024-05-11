@@ -2,9 +2,16 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\{InputInterface,InputArgument};
+use Symfony\Component\Console\Output\OutputInterface;
+
 class BulkAddEvent extends Event
 {
     public string $dir;
+    /** @var UploadResult[] */
     public array $results;
 
     public function __construct(string $dir)
@@ -18,49 +25,49 @@ class BulkAddEvent extends Event
 class BulkAdd extends Extension
 {
     /** @var BulkAddTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user;
-        if ($event->page_matches("bulk_add")) {
-            if ($user->can(Permissions::BULK_ADD) && $user->check_auth_token() && isset($_POST['dir'])) {
-                set_time_limit(0);
-                $bae = send_event(new BulkAddEvent($_POST['dir']));
-                foreach ($bae->results as $result) {
-                    $this->theme->add_status("Adding files", $result);
-                }
-                $this->theme->display_upload_results($page);
-            }
+        if ($event->page_matches("bulk_add", method: "POST", permission: Permissions::BULK_ADD)) {
+            $dir = $event->req_POST('dir');
+            shm_set_timeout(null);
+            $bae = send_event(new BulkAddEvent($dir));
+            $this->theme->display_upload_results($page, $bae->results);
         }
     }
 
-    public function onCommand(CommandEvent $event)
+    public function onCliGen(CliGenEvent $event): void
     {
-        if ($event->cmd == "help") {
-            print "\tbulk-add [directory]\n";
-            print "\t\tImport this directory\n\n";
-        }
-        if ($event->cmd == "bulk-add") {
-            if (count($event->args) == 1) {
-                $bae = send_event(new BulkAddEvent($event->args[0]));
-                print(implode("\n", $bae->results));
-            }
-        }
+        $event->app->register('bulk-add')
+            ->addArgument('directory', InputArgument::REQUIRED)
+            ->setDescription('Import a directory of images')
+            ->setCode(function (InputInterface $input, OutputInterface $output): int {
+                $dir = $input->getArgument('directory');
+                $bae = send_event(new BulkAddEvent($dir));
+                foreach ($bae->results as $r) {
+                    if(is_a($r, UploadError::class)) {
+                        $output->writeln($r->name." failed: ".$r->error);
+                    } else {
+                        $output->writeln($r->name." ok");
+                    }
+                }
+                return Command::SUCCESS;
+            });
     }
 
-    public function onAdminBuilding(AdminBuildingEvent $event)
+    public function onAdminBuilding(AdminBuildingEvent $event): void
     {
         $this->theme->display_admin_block();
     }
 
-    public function onBulkAdd(BulkAddEvent $event)
+    public function onBulkAdd(BulkAddEvent $event): void
     {
         if (is_dir($event->dir) && is_readable($event->dir)) {
             $event->results = add_dir($event->dir);
         } else {
-            $h_dir = html_escape($event->dir);
-            $event->results[] = "Error, $h_dir is not a readable directory";
+            $event->results = [new UploadError($event->dir, "is not a readable directory")];
         }
     }
 }

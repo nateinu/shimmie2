@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
+use function MicroHTML\{FORM, INPUT, TABLE, TR, TD, emptyHTML, rawHTML, BR, TEXTAREA, DIV, HR, P, A};
+
 class WikiTheme extends Themelet
 {
     /**
@@ -10,7 +14,7 @@ class WikiTheme extends Themelet
      * $wiki_page The wiki page, has ->title and ->body
      * $nav_page A wiki page object with navigation, has ->body
      */
-    public function display_page(Page $page, WikiPage $wiki_page, ?WikiPage $nav_page=null)
+    public function display_page(Page $page, WikiPage $wiki_page, ?WikiPage $nav_page = null): void
     {
         global $user;
 
@@ -19,20 +23,19 @@ class WikiTheme extends Themelet
             $nav_page->body = "";
         }
 
-        $tfe = new TextFormattingEvent($nav_page->body);
-        send_event($tfe);
+        $tfe = send_event(new TextFormattingEvent($nav_page->body));
 
         // only the admin can edit the sidebar
         if ($user->can(Permissions::WIKI_ADMIN)) {
-            $tfe->formatted .= "<p>(<a href='".make_link("wiki/wiki:sidebar", "edit=on")."'>Edit</a>)";
+            $tfe->formatted .= "<p>(<a href='".make_link("wiki/wiki:sidebar/edit")."'>Edit</a>)";
         }
 
         // see if title is a category'd tag
         $title_html = html_escape($wiki_page->title);
-        if (class_exists('TagCategories')) {
-            $this->tagcategories = new TagCategories();
-            $tag_category_dict = $this->tagcategories->getKeyedDict();
-            $title_html = $this->tagcategories->getTagHtml($title_html, $tag_category_dict);
+        if (Extension::is_enabled(TagCategoriesInfo::KEY)) {
+            $tagcategories = new TagCategories();
+            $tag_category_dict = $tagcategories->getKeyedDict();
+            $title_html = $tagcategories->getTagHtml($title_html, $tag_category_dict);
         }
 
         if (!$wiki_page->exists) {
@@ -46,7 +49,11 @@ class WikiTheme extends Themelet
         $page->add_block(new Block($title_html, $this->create_display_html($wiki_page)));
     }
 
-    public function display_page_history(Page $page, string $title, array $history)
+    /**
+     * @param array<array{revision: string, date: string}> $history
+     */
+
+    public function display_page_history(Page $page, string $title, array $history): void
     {
         $html = "<table class='zebra'>";
         foreach ($history as $row) {
@@ -60,7 +67,7 @@ class WikiTheme extends Themelet
         $page->add_block(new Block(html_escape($title), $html));
     }
 
-    public function display_page_editor(Page $page, WikiPage $wiki_page)
+    public function display_page_editor(Page $page, WikiPage $wiki_page): void
     {
         $page->set_title(html_escape($wiki_page->title));
         $page->set_heading(html_escape($wiki_page->title));
@@ -70,71 +77,69 @@ class WikiTheme extends Themelet
 
     protected function create_edit_html(WikiPage $page): string
     {
-        $h_title = html_escape($page->title);
-        $i_revision = $page->revision + 1;
-
         global $user;
-        if ($user->can(Permissions::WIKI_ADMIN)) {
-            $val = $page->is_locked() ? " checked" : "";
-            $lock = "<br>Lock page: <input type='checkbox' name='lock'$val>";
-        } else {
-            $lock = "";
-        }
-        return "
-			".make_form(make_link("wiki_admin/save"))."
-				<input type='hidden' name='title' value='$h_title'>
-				<input type='hidden' name='revision' value='$i_revision'>
-				<textarea name='body' style='width: 100%' rows='20'>".html_escape($page->body)."</textarea>
-				$lock
-				<br><input type='submit' value='Save'>
-			</form>
-		";
+
+        $lock = $user->can(Permissions::WIKI_ADMIN) ?
+            emptyHTML(
+                BR(),
+                "Lock page: ",
+                INPUT(["type" => "checkbox", "name" => "lock", "checked" => $page->is_locked()])
+            ) :
+            emptyHTML();
+
+        $u_title = url_escape($page->title);
+        return (string)SHM_SIMPLE_FORM(
+            "wiki/$u_title/save",
+            INPUT(["type" => "hidden", "name" => "revision", "value" => $page->revision + 1]),
+            TEXTAREA(["name" => "body", "style" => "width: 100%", "rows" => 20], $page->body),
+            $lock,
+            BR(),
+            SHM_SUBMIT("Save")
+        );
     }
 
     protected function create_display_html(WikiPage $page): string
     {
         global $user;
 
+        $u_title = url_escape($page->title);
         $owner = $page->get_owner();
 
-        $formatted_body = Wiki::format_tag_wiki_page($page);
+        $formatted_body = rawHTML(Wiki::format_tag_wiki_page($page));
 
-        $edit = "<table><tr>";
-        $edit .= Wiki::can_edit($user, $page) ?
-            "
-				<td>".make_form(make_link("wiki_admin/edit"))."
-					<input type='hidden' name='title' value='".html_escape($page->title)."'>
-					<input type='hidden' name='revision' value='".$page->revision."'>
-					<input type='submit' value='Edit'>
-				</form></td>
-			" :
-            "";
-        if ($user->can(Permissions::WIKI_ADMIN)) {
-            $edit .= "
-				<td>".make_form(make_link("wiki_admin/delete_revision"))."
-					<input type='hidden' name='title' value='".html_escape($page->title)."'>
-					<input type='hidden' name='revision' value='".$page->revision."'>
-					<input type='submit' value='Delete This Version'>
-				</form></td>
-				<td>".make_form(make_link("wiki_admin/delete_all"))."
-					<input type='hidden' name='title' value='".html_escape($page->title)."'>
-					<input type='submit' value='Delete All'>
-				</form></td>
-			";
+        $edit = TR();
+        if(Wiki::can_edit($user, $page)) {
+            $edit->appendChild(TD(FORM(
+                ["action" => make_link("wiki/$u_title/edit", "revision={$page->revision}")],
+                INPUT(["type" => "submit", "value" => "Edit"])
+            )));
         }
-        $edit .= "</tr></table>";
+        if ($user->can(Permissions::WIKI_ADMIN)) {
+            $edit->appendChild(
+                TD(SHM_SIMPLE_FORM(
+                    "wiki/$u_title/delete_revision",
+                    INPUT(["type" => "hidden", "name" => "revision", "value" => $page->revision]),
+                    SHM_SUBMIT("Delete")
+                ))
+            );
+            $edit->appendChild(TD(SHM_SIMPLE_FORM(
+                "wiki/$u_title/delete_all",
+                SHM_SUBMIT("Delete All")
+            )));
+        }
 
-        return "
-			<div class='wiki-page'>
-			$formatted_body
-			<hr>
-			<p class='wiki-footer'>
-				<a href='".make_link("wiki_admin/history", "title={$page->title}")."'>Revision {$page->revision}</a>
-				by <a href='".make_link("user/{$owner->name}")."'>{$owner->name}</a>
-				at {$page->date}
-				$edit
-			</p>
-			</div>
-		";
+        return (string)DIV(
+            ["class" => "wiki-page"],
+            $formatted_body,
+            HR(),
+            P(
+                ["class" => "wiki-footer"],
+                A(["href" => make_link("wiki/$u_title/history")], "Revision {$page->revision}"),
+                " by ",
+                A(["href" => make_link("user/{$owner->name}")], $owner->name),
+                " at {$page->date}",
+                TABLE($edit),
+            )
+        );
     }
 }

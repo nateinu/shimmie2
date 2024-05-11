@@ -2,19 +2,21 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 use function MicroHTML\{PRE};
 
 class ETServer extends Extension
 {
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $database, $page, $user;
         if ($event->page_matches("register.php")) {
-            error_log("register.php");
-            if (isset($_POST["data"])) {
+            $data = $event->get_POST("data");
+            if ($data) {
                 $database->execute(
                     "INSERT INTO registration(data) VALUES(:data)",
-                    ["data"=>$_POST["data"]]
+                    ["data" => $data]
                 );
                 $page->set_title("Thanks!");
                 $page->set_heading("Thanks!");
@@ -26,7 +28,7 @@ class ETServer extends Extension
                 foreach ($database->get_all("SELECT responded, data FROM registration ORDER BY responded DESC") as $row) {
                     $page->add_block(new Block(
                         $row["responded"],
-                        (string)PRE(["style"=>"text-align: left; overflow: scroll;"], $row["data"]),
+                        PRE(["style" => "text-align: left; overflow: scroll;"], $row["data"]),
                         "main",
                         $n++
                     ));
@@ -35,7 +37,7 @@ class ETServer extends Extension
         }
     }
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 

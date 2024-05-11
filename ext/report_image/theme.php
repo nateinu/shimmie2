@@ -1,11 +1,20 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 use function MicroHTML\INPUT;
 
+/**
+ * @phpstan-type Report array{id: int, image: Image, reason: string, reporter_name: string}
+ */
 class ReportImageTheme extends Themelet
 {
-    public function display_reported_images(Page $page, array $reports)
+    /**
+     * @param array<Report> $reports
+     */
+    public function display_reported_images(Page $page, array $reports): void
     {
         global $config, $user;
 
@@ -18,22 +27,20 @@ class ReportImageTheme extends Themelet
             $reporter_name = html_escape($report['reporter_name']);
             $userlink = "<a href='".make_link("user/$reporter_name")."'>$reporter_name</a>";
 
-            $iabbe = new ImageAdminBlockBuildingEvent($image, $user, "report");
-            send_event($iabbe);
-            ksort($iabbe->parts);
-            $actions = join("<br>", $iabbe->parts);
+            $iabbe = send_event(new ImageAdminBlockBuildingEvent($image, $user, "report"));
+            $actions = join("", $iabbe->get_parts());
 
             $h_reportedimages .= "
 				<tr>
 					<td>{$image_link}</td>
-					<td>Report by $userlink: $h_reason</td>
-					<td class='formstretch'>
+					<td class='reason'>Report by $userlink: $h_reason</td>
+					<td class='formstretch post_controls'>
 						".make_form(make_link("image_report/remove"))."
 							<input type='hidden' name='id' value='{$report['id']}'>
 							<input type='submit' value='Remove Report'>
 						</form>
 
-						<br>$actions
+						$actions
 					</td>
 				</tr>
 			";
@@ -54,9 +61,9 @@ class ReportImageTheme extends Themelet
     }
 
     /**
-     * #param ImageReport[] $reports
+     * @param ImageReport[] $reports
      */
-    public function display_image_banner(Image $image, array $reports)
+    public function display_image_banner(Image $image, array $reports): void
     {
         global $config, $page;
 
@@ -89,12 +96,12 @@ class ReportImageTheme extends Themelet
         $page->add_block(new Block("Report Post", $html, "left"));
     }
 
-    public function get_nuller(User $duser)
+    public function get_nuller(User $duser): void
     {
         global $page;
         $html = (string)SHM_SIMPLE_FORM(
             "image_report/remove_reports_by",
-            INPUT(["type"=>'hidden', "name"=>'user_id', "value"=>$duser->id]),
+            INPUT(["type" => 'hidden', "name" => 'user_id', "value" => $duser->id]),
             SHM_SUBMIT('Delete all reports by this user')
         );
         $page->add_block(new Block("Reports", $html, "main", 80));

@@ -2,9 +2,15 @@
 
 declare(strict_types=1);
 
-class ViewImageTheme extends Themelet
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
+use function MicroHTML\{A, joinHTML, TABLE, TR, TD, INPUT, emptyHTML, DIV, BR};
+
+class ViewPostTheme extends Themelet
 {
-    public function display_meta_headers(Image $image)
+    public function display_meta_headers(Image $image): void
     {
         global $page;
 
@@ -16,57 +22,85 @@ class ViewImageTheme extends Themelet
         $page->add_html_header("<meta property=\"og:url\" content=\"".make_http(make_link("post/view/{$image->id}"))."\">");
     }
 
-    /*
+    /**
      * Build a page showing $image and some info about it
+     *
+     * @param HTMLElement[] $editor_parts
      */
-    public function display_page(Image $image, $editor_parts)
+    public function display_page(Image $image, array $editor_parts): void
     {
         global $page;
         $page->set_title("Post {$image->id}: ".$image->get_tag_list());
         $page->set_heading(html_escape($image->get_tag_list()));
-        $page->add_block(new Block("Navigation", $this->build_navigation($image), "left", 0));
+        $page->add_block(new Block("Post {$image->id}", $this->build_navigation($image), "left", 0, "Navigationleft"));
         $page->add_block(new Block(null, $this->build_info($image, $editor_parts), "main", 20, "ImageInfo"));
         //$page->add_block(new Block(null, $this->build_pin($image), "main", 11));
 
         $query = $this->get_query();
-        $page->add_html_header("<link id='nextlink' rel='next' href='".make_link("post/next/{$image->id}", $query)."'>");
-        $page->add_html_header("<link id='prevlink' rel='previous' href='".make_link("post/prev/{$image->id}", $query)."'>");
+        if(!$this->is_ordered_search()) {
+            $page->add_html_header("<link id='nextlink' rel='next' href='".make_link("post/next/{$image->id}", $query)."'>");
+            $page->add_html_header("<link id='prevlink' rel='previous' href='".make_link("post/prev/{$image->id}", $query)."'>");
+        }
     }
 
-    public function display_admin_block(Page $page, $parts)
+    /**
+     * @param HTMLElement[] $parts
+     */
+    public function display_admin_block(Page $page, array $parts): void
     {
         if (count($parts) > 0) {
-            $page->add_block(new Block("Post Controls", join("<br>", $parts), "left", 50));
+            $page->add_block(new Block("Post Controls", DIV(["class" => "post_controls"], joinHTML("", $parts)), "left", 50));
         }
     }
 
     protected function get_query(): ?string
     {
         if (isset($_GET['search'])) {
-            $query = "search=".url_escape(Tag::caret($_GET['search']));
+            $query = "search=".url_escape($_GET['search']);
         } else {
             $query = null;
         }
         return $query;
     }
 
-    protected function build_pin(Image $image): string
+    /**
+     * prev/next only work for default-ordering searches - if the user
+     * has specified a custom order, we can't show prev/next.
+     */
+    protected function is_ordered_search(): bool
+    {
+        if(isset($_GET['search'])) {
+            $tags = Tag::explode($_GET['search']);
+            foreach($tags as $tag) {
+                if(preg_match("/^order[=:]/", $tag) == 1) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    protected function build_pin(Image $image): HTMLElement
     {
         $query = $this->get_query();
-        $h_prev = "<a id='prevlink' href='".make_link("post/prev/{$image->id}", $query)."'>Prev</a>";
-        $h_index = "<a href='".make_link()."'>Index</a>";
-        $h_next = "<a id='nextlink' href='".make_link("post/next/{$image->id}", $query)."'>Next</a>";
-
-        return "$h_prev | $h_index | $h_next";
+        if($this->is_ordered_search()) {
+            return A(["href" => make_link()], "Index");
+        } else {
+            return joinHTML(" | ", [
+                A(["href" => make_link("post/prev/{$image->id}", $query), "id" => "prevlink"], "Prev"),
+                A(["href" => make_link()], "Index"),
+                A(["href" => make_link("post/next/{$image->id}", $query), "id" => "nextlink"], "Next"),
+            ]);
+        }
     }
 
     protected function build_navigation(Image $image): string
     {
         $h_pin = $this->build_pin($image);
         $h_search = "
-			<p><form action='".make_link()."' method='GET'>
-				<input type='hidden' name='q' value='/post/list'>
-				<input type='search' name='search' placeholder='Search' class='autocomplete_tags' autocomplete='off'>
+			<p><form action='".search_link()."' method='GET'>
+				<input type='hidden' name='q' value='post/list'>
+				<input type='search' name='search' placeholder='Search' class='autocomplete_tags'>
 				<input type='submit' value='Find' style='display: none;'>
 			</form>
 		";
@@ -74,36 +108,37 @@ class ViewImageTheme extends Themelet
         return "$h_pin<br>$h_search";
     }
 
-    protected function build_info(Image $image, $editor_parts): string
+    /**
+     * @param HTMLElement[] $editor_parts
+     */
+    protected function build_info(Image $image, array $editor_parts): HTMLElement
     {
         global $user;
 
         if (count($editor_parts) == 0) {
-            return ($image->is_locked() ? "<br>[Post Locked]" : "");
+            return emptyHTML($image->is_locked() ? "[Post Locked]" : "");
         }
 
-        $html = make_form(make_link("post/set"))."
-					<input type='hidden' name='image_id' value='{$image->id}'>
-					<table style='width: 500px; max-width: 100%;' class='image_info form'>
-		";
-        foreach ($editor_parts as $part) {
-            $html .= $part;
-        }
-        if (
+        if(
             (!$image->is_locked() || $user->can(Permissions::EDIT_IMAGE_LOCK)) &&
             $user->can(Permissions::EDIT_IMAGE_TAG)
         ) {
-            $html .= "
-						<tr><td colspan='4'>
-							<input class='view' type='button' value='Edit' onclick='$(\".view\").hide(); $(\".edit\").show();'>
-							<input class='edit' type='submit' value='Set'>
-						</td></tr>
-			";
+            $editor_parts[] = TR(TD(
+                ["colspan" => 4],
+                INPUT(["class" => "view", "type" => "button", "value" => "Edit", "onclick" => "clearViewMode()"]),
+                INPUT(["class" => "edit", "type" => "submit", "value" => "Set"])
+            ));
         }
-        $html .= "
-					</table>
-				</form>
-		";
-        return $html;
+
+        return SHM_SIMPLE_FORM(
+            "post/set",
+            INPUT(["type" => "hidden", "name" => "image_id", "value" => $image->id]),
+            TABLE(
+                [
+                    "class" => "image_info form",
+                ],
+                ...$editor_parts,
+            ),
+        );
     }
 }

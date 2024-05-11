@@ -2,13 +2,15 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class FavoritesInfo extends ExtensionInfo
 {
     public const KEY = "favorites";
 
     public string $key = self::KEY;
     public string $name = "Favorites";
-    public array $authors = ["Daniel Marschall"=>"info@daniel-marschall.de"];
+    public array $authors = ["Daniel Marschall" => "info@daniel-marschall.de"];
     public string $license = self::LICENSE_GPLV2;
     public string $description = "Allow users to favorite images";
     public ?string $documentation =

@@ -1,6 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
+use MicroHTML\HTMLElement;
+
 /**
  * Name: Danbooru Theme
  * Author: Bzchan <bzchan@animemahou.com>
@@ -45,14 +50,7 @@ Tips
 * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 class Page extends BasePage
 {
-    public bool $left_enabled = true;
-
-    public function disable_left()
-    {
-        $this->left_enabled = false;
-    }
-
-    public function render()
+    public function body_html(): string
     {
         global $config;
 
@@ -69,10 +67,10 @@ class Page extends BasePage
                     $left_block_html .= $block->get_html(true);
                     break;
                 case "user":
-                    $user_block_html .= $block->body; // $this->block_to_html($block, true);
+                    $user_block_html .= $block->body;
                     break;
                 case "subheading":
-                    $sub_block_html .= $block->body; // $this->block_to_html($block, true);
+                    $sub_block_html .= $block->body;
                     break;
                 case "main":
                     if ($block->header == "Posts") {
@@ -125,37 +123,30 @@ class Page extends BasePage
         }
 
         $flash_html = $this->flash ? "<b id='flash'>".nl2br(html_escape(implode("\n", $this->flash)))."</b>" : "";
-        $head_html = $this->head_html();
         $footer_html = $this->footer_html();
 
-        print <<<EOD
-<!doctype html>
-<html class="no-js" lang="en">
-    $head_html
-	<body>
-		<header>
-			$title_link
-			<ul id="navbar" class="flat-list">
-				$custom_links
-			</ul>
-			<ul id="subnavbar" class="flat-list">
-				$custom_sublinks
-			</ul>
-		</header>
-		$subheading
-		$sub_block_html
-		$left
-		<article class="$withleft">
-			$flash_html
-			$main_block_html
-		</article>
-		<footer><em>$footer_html</em></footer>
-	</body>
-</html>
+        return <<<EOD
+            <header>
+                $title_link
+                <ul id="navbar" class="flat-list">
+                    $custom_links
+                </ul>
+                <ul id="subnavbar" class="flat-list">
+                    $custom_sublinks
+                </ul>
+            </header>
+            $subheading
+            $sub_block_html
+            $left
+            <article class="$withleft">
+                $flash_html
+                $main_block_html
+            </article>
+            <footer><em>$footer_html</em></footer>
 EOD;
     }
 
-    public function navlinks(Link $link, string $desc, bool $active): ?string
+    public function navlinks(Link $link, HTMLElement|string $desc, bool $active): ?string
     {
         $html = null;
         if ($active) {

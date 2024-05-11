@@ -1,12 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class Themelet extends BaseThemelet
 {
     /**
      * Add a generic paginator.
      */
-    public function display_paginator(Page $page, string $base, ?string $query, int $page_number, int $total_pages, bool $show_random = false)
+    public function display_paginator(Page $page, string $base, ?string $query, int $page_number, int $total_pages, bool $show_random = false): void
     {
         if ($total_pages == 0) {
             $total_pages = 1;
@@ -52,8 +55,8 @@ class Themelet extends BaseThemelet
         $next_html      = $at_end ? "Next" : $this->futaba_gen_page_link($base_url, $query, $next, "Next");
         //$last_html    = $at_end   ? "Last"  : $this->futaba_gen_page_link($base_url, $query, $total_pages, "Last");
 
-        $start = $current_page-5 > 1 ? $current_page-5 : 1;
-        $end = $start+10 < $total_pages ? $start+10 : $total_pages;
+        $start = $current_page - 5 > 1 ? $current_page - 5 : 1;
+        $end = $start + 10 < $total_pages ? $start + 10 : $total_pages;
 
         $pages = [];
         foreach (range($start, $end) as $i) {

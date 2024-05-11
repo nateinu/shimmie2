@@ -1,4 +1,11 @@
 <?php
+
+declare(strict_types=1);
+
+namespace Shimmie2;
+
+require_once "core/urls.php";
+
 /**
  * Shimmie Installer
  *
@@ -15,7 +22,7 @@
  * and other such things that aren't ready yet
  */
 
-function install()
+function install(): void
 {
     date_default_timezone_set('UTC');
 
@@ -29,7 +36,7 @@ function install()
     // Pull in necessary files
     require_once "vendor/autoload.php";
     global $_tracer;
-    $_tracer = new EventTracer();
+    $_tracer = new \EventTracer();
 
     require_once "core/exceptions.php";
     require_once "core/cacheengine.php";
@@ -41,15 +48,20 @@ function install()
     if ($dsn) {
         do_install($dsn);
     } else {
-        ask_questions();
+        if (PHP_SAPI == 'cli') {
+            print("INSTALL_DSN needs to be set for CLI installation\n");
+            exit(1);
+        } else {
+            ask_questions();
+        }
     }
 }
 
-function get_dsn()
+function get_dsn(): ?string
 {
     if (getenv("INSTALL_DSN")) {
         $dsn = getenv("INSTALL_DSN");
-    } elseif (@$_POST["database_type"] == DatabaseDriver::SQLITE) {
+    } elseif (@$_POST["database_type"] == DatabaseDriverID::SQLITE->value) {
         /** @noinspection PhpUnhandledExceptionInspection */
         $id = bin2hex(random_bytes(5));
         $dsn = "sqlite:data/shimmie.{$id}.sqlite";
@@ -61,7 +73,7 @@ function get_dsn()
     return $dsn;
 }
 
-function do_install($dsn)
+function do_install(string $dsn): void
 {
     try {
         create_dirs();
@@ -72,7 +84,7 @@ function do_install($dsn)
     }
 }
 
-function ask_questions()
+function ask_questions(): void
 {
     $warnings = [];
     $errors = [];
@@ -97,11 +109,11 @@ function ask_questions()
 		";
     }
 
-    $drivers = PDO::getAvailableDrivers();
+    $drivers = \PDO::getAvailableDrivers();
     if (
-        !in_array(DatabaseDriver::MYSQL, $drivers) &&
-        !in_array(DatabaseDriver::PGSQL, $drivers) &&
-        !in_array(DatabaseDriver::SQLITE, $drivers)
+        !in_array(DatabaseDriverID::MYSQL->value, $drivers) &&
+        !in_array(DatabaseDriverID::PGSQL->value, $drivers) &&
+        !in_array(DatabaseDriverID::SQLITE->value, $drivers)
     ) {
         $errors[] = "
 			No database connection library could be found; shimmie needs
@@ -109,12 +121,14 @@ function ask_questions()
 		";
     }
 
-    $db_m = in_array(DatabaseDriver::MYSQL, $drivers) ? '<option value="'. DatabaseDriver::MYSQL .'">MySQL</option>' : "";
-    $db_p = in_array(DatabaseDriver::PGSQL, $drivers) ? '<option value="'. DatabaseDriver::PGSQL .'">PostgreSQL</option>' : "";
-    $db_s = in_array(DatabaseDriver::SQLITE, $drivers) ? '<option value="'. DatabaseDriver::SQLITE .'">SQLite</option>' : "";
+    $db_s = in_array(DatabaseDriverID::SQLITE->value, $drivers) ? '<option value="'. DatabaseDriverID::SQLITE->value .'">SQLite</option>' : "";
+    $db_m = in_array(DatabaseDriverID::MYSQL->value, $drivers) ? '<option value="'. DatabaseDriverID::MYSQL->value .'">MySQL</option>' : "";
+    $db_p = in_array(DatabaseDriverID::PGSQL->value, $drivers) ? '<option value="'. DatabaseDriverID::PGSQL->value .'">PostgreSQL</option>' : "";
 
     $warn_msg = $warnings ? "<h3>Warnings</h3>".implode("\n<p>", $warnings) : "";
     $err_msg = $errors ? "<h3>Errors</h3>".implode("\n<p>", $errors) : "";
+
+    $data_href = get_base_href();
 
     die_nicely(
         "Install Options",
@@ -122,14 +136,14 @@ function ask_questions()
     $warn_msg
     $err_msg
 
-    <form action="index.php" method="POST">
+    <form action="$data_href/index.php" method="POST">
 		<table class='form' style="margin: 1em auto;">
 			<tr>
 				<th>Type:</th>
 				<td><select name="database_type" id="database_type" onchange="update_qs();">
-					$db_m
+                    $db_s
+                    $db_m
 					$db_p
-					$db_s
 				</select></td>
 			</tr>
 			<tr class="dbconf mysql pgsql">
@@ -156,13 +170,9 @@ function ask_questions()
             return document.querySelectorAll(n);
         }
         function update_qs() {
-            Array.prototype.forEach.call(q('.dbconf'), function(el, i){
-                el.style.display = 'none';
-            });
+            q('.dbconf').forEach(el => el.style.display = 'none');
             let seldb = q("#database_type")[0].value || "none";
-            Array.prototype.forEach.call(q('.'+seldb), function(el, i){
-                el.style.display = null;
-            });
+            q('.'+seldb).forEach(el => el.style.display = null);
         }
         </script>
     </form>
@@ -173,8 +183,9 @@ function ask_questions()
         The username provided must have access to create tables within the database.
     </p>
     <p class="dbconf sqlite">
-        For SQLite the database name will be a filename on disk, relative to
-        where shimmie was installed.
+        SQLite with default settings is fine for tens of users with thousands
+        of images. For thousands of users or millions of images, postgres is
+        recommended.
     </p>
     <p class="dbconf none">
         Drivers can generally be downloaded with your OS package manager;
@@ -185,7 +196,7 @@ EOD
 }
 
 
-function create_dirs()
+function create_dirs(): void
 {
     $data_exists = file_exists("data") || mkdir("data");
     $data_writable = $data_exists && (is_writable("data") || chmod("data", 0755));
@@ -202,7 +213,7 @@ function create_dirs()
     }
 }
 
-function create_tables(Database $db)
+function create_tables(Database $db): void
 {
     try {
         if ($db->count_tables() > 0) {
@@ -287,7 +298,9 @@ function create_tables(Database $db)
         if ($db->is_transaction_open()) {
             $db->commit();
         }
-    } catch (PDOException $e) {
+        // Ensure that we end this code in a transaction (for testing)
+        $db->begin_transaction();
+    } catch (\PDOException $e) {
         throw new InstallerException(
             "PDO Error:",
             "<p>An error occurred while trying to create the database tables necessary for Shimmie.</p>
@@ -299,7 +312,7 @@ function create_tables(Database $db)
     }
 }
 
-function write_config($dsn)
+function write_config(string $dsn): void
 {
     $file_content = "<" . "?php\ndefine('DATABASE_DSN', '$dsn');\n";
 
@@ -308,11 +321,16 @@ function write_config($dsn)
     }
 
     if (file_put_contents("data/config/shimmie.conf.php", $file_content, LOCK_EX)) {
-        header("Location: index.php?flash=Installation%20complete");
-        die_nicely(
-            "Installation Successful",
-            "<p>If you aren't redirected, <a href=\"index.php\">click here to Continue</a>."
-        );
+        if (PHP_SAPI == 'cli') {
+            print("Installation Successful\n");
+            exit(0);
+        } else {
+            header("Location: index.php?flash=Installation%20complete");
+            die_nicely(
+                "Installation Successful",
+                "<p>If you aren't redirected, <a href=\"index.php\">click here to Continue</a>."
+            );
+        }
     } else {
         $h_file_content = htmlentities($file_content);
         throw new InstallerException(

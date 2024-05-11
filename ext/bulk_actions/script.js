@@ -14,7 +14,7 @@ function validate_selections(form, confirmationMessage) {
     } else {
         var query = $(form).find('input[name="bulk_query"]').val();
 
-        if (query == null || query === "") {
+        if (query === null || query === "") {
             return false;
         } else {
             queryOnly = true;
@@ -68,11 +68,11 @@ function get_selected_items() {
 }
 
 function set_selected_items(items) {
-    $(".shm-thumb").removeClass('selected');
+    $(".shm-thumb").removeClass('bulk_selected');
 
     $(items).each(
         function(index,item) {
-            $('.shm-thumb[data-post-id="' + item + '"]').addClass('selected');
+            $('.shm-thumb[data-post-id="' + item + '"]').addClass('bulk_selected');
         }
     );
 

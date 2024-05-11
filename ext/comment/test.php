@@ -1,6 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
+namespace Shimmie2;
+
 class CommentListTest extends ShimmiePHPUnitTestCase
 {
     public function setUp(): void
@@ -18,7 +21,7 @@ class CommentListTest extends ShimmiePHPUnitTestCase
         parent::tearDown();
     }
 
-    public function testCommentsPage()
+    public function testCommentsPage(): void
     {
         global $user;
 
@@ -87,7 +90,7 @@ class CommentListTest extends ShimmiePHPUnitTestCase
         $this->assert_no_text('ASDFASDF');
     }
 
-    public function testSingleDel()
+    public function testSingleDel(): void
     {
         global $database, $user;
 

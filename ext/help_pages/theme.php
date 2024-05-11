@@ -2,9 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class HelpPagesTheme extends Themelet
 {
-    public function display_list_page(array $pages)
+    /**
+     * @param array<string,string> $pages
+     */
+    public function display_list_page(array $pages): void
     {
         global $page;
 
@@ -12,7 +17,7 @@ class HelpPagesTheme extends Themelet
         $page->set_heading("Help Pages");
 
         $nav_block = new Block("Help", "", "left", 0);
-        foreach ($pages as $link=>$desc) {
+        foreach ($pages as $link => $desc) {
             $link = make_link("help/{$link}");
             $nav_block->body .= "<a href='{$link}'>".html_escape($desc)."</a><br/>";
         }
@@ -21,11 +26,12 @@ class HelpPagesTheme extends Themelet
         $page->add_block(new Block("Help Pages", "See list of pages to left"));
     }
 
-    public function display_help_page(String $title)
+    public function display_help_page(string $title): void
     {
         global $page;
 
         $page->set_title("Help - $title");
         $page->set_heading("Help - $title");
+        $page->add_block(new NavBlock());
     }
 }

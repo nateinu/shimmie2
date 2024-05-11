@@ -2,12 +2,19 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class Notes extends Extension
 {
     /** @var NotesTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onInitExt(InitExtEvent $event): void
+    {
+        Image::$prop_types["notes"] = ImagePropType::INT;
+    }
+
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $config, $database;
 
@@ -68,89 +75,63 @@ class Notes extends Extension
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user;
-        if ($event->page_matches("note")) {
-            switch ($event->get_arg(0)) {
-                case "list": //index
-                    $this->get_notes_list($event); // This should show images like post/list but i don't know how do that.
-                    break;
-                case "requests": // The same as post/list but only for note_request table.
-                    $this->get_notes_requests($event); // This should show images like post/list but i don't know how do that.
-                    break;
-                case "search":
-                    if (!$user->is_anonymous()) {
-                        $this->theme->search_notes_page($page);
-                    }
-                    break;
-                case "updated": //Thinking how to build this function.
-                    $this->get_histories($event);
-                    break;
-                case "history": //Thinking how to build this function.
-                    $this->get_history($event);
-                    break;
-                case "revert":
-                    $noteID   = int_escape($event->get_arg(1));
-                    $reviewID = int_escape($event->get_arg(2));
-                    if (!$user->is_anonymous()) {
-                        $this->revert_history($noteID, $reviewID);
-                    }
-
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("note/updated"));
-                    break;
-                case "add_note":
-                    if (!$user->is_anonymous()) {
-                        $this->add_new_note();
-                    }
-
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("post/view/".$_POST["image_id"]));
-                    break;
-                case "add_request":
-                    if (!$user->is_anonymous()) {
-                        $this->add_note_request();
-                    }
-
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("post/view/".$_POST["image_id"]));
-                    break;
-                case "nuke_notes":
-                    if ($user->can(Permissions::NOTES_ADMIN)) {
-                        $this->nuke_notes();
-                    }
-
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("post/view/".$_POST["image_id"]));
-                    break;
-                case "nuke_requests":
-                    if ($user->can(Permissions::NOTES_ADMIN)) {
-                        $this->nuke_requests();
-                    }
-
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("post/view/".$_POST["image_id"]));
-                    break;
-                case "edit_note":
-                    if (!$user->is_anonymous()) {
-                        $this->update_note();
-                        $page->set_mode(PageMode::REDIRECT);
-                        $page->set_redirect(make_link("post/view/" . $_POST["image_id"]));
-                    }
-                    break;
-                case "delete_note":
-                    if ($user->can(Permissions::NOTES_ADMIN)) {
-                        $this->delete_note();
-                        $page->set_mode(PageMode::REDIRECT);
-                        $page->set_redirect(make_link("post/view/".$_POST["image_id"]));
-                    }
-                    break;
-                default:
-                    $page->set_mode(PageMode::REDIRECT);
-                    $page->set_redirect(make_link("note/list"));
-                    break;
-            }
+        if ($event->page_matches("note/list", paged: true)) {
+            $this->get_notes_list($event->get_iarg('page_num', 1) - 1); // This should show images like post/list but i don't know how do that.
+        }
+        if ($event->page_matches("note/requests", paged: true)) {
+            $this->get_notes_requests($event->get_iarg('page_num', 1) - 1); // This should show images like post/list but i don't know how do that.
+        }
+        if ($event->page_matches("note/updated", paged: true)) {
+            $this->get_histories($event->get_iarg('page_num', 1) - 1);
+        }
+        if ($event->page_matches("note/history/{note_id}", paged: true)) {
+            $this->get_history($event->get_iarg('note_id'), $event->get_iarg('page_num', 1) - 1);
+        }
+        if ($event->page_matches("note/revert/{noteID}/{reviewID}", permission: Permissions::NOTES_EDIT)) {
+            $noteID = $event->get_iarg('noteID');
+            $reviewID = $event->get_iarg('reviewID');
+            $this->revert_history($noteID, $reviewID);
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("note/updated"));
+        }
+        if ($event->page_matches("note/add_request", permission: Permissions::NOTES_REQUEST)) {
+            $image_id = int_escape($event->req_POST("image_id"));
+            $this->add_note_request($image_id);
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
+        }
+        if ($event->page_matches("note/nuke_requests", permission: Permissions::NOTES_ADMIN)) {
+            $image_id = int_escape($event->req_POST("image_id"));
+            $this->nuke_requests($image_id);
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
+        }
+        if ($event->page_matches("note/create_note", permission: Permissions::NOTES_CREATE)) {
+            $page->set_mode(PageMode::DATA);
+            $note_id = $this->add_new_note();
+            $page->set_data(\Safe\json_encode([
+                'status' => 'success',
+                'note_id' => $note_id,
+            ]));
+        }
+        if ($event->page_matches("note/update_note", permission: Permissions::NOTES_EDIT)) {
+            $page->set_mode(PageMode::DATA);
+            $this->update_note();
+            $page->set_data(\Safe\json_encode(['status' => 'success']));
+        }
+        if ($event->page_matches("note/delete_note", permission: Permissions::NOTES_ADMIN)) {
+            $page->set_mode(PageMode::DATA);
+            $this->delete_note();
+            $page->set_data(\Safe\json_encode(['status' => 'success']));
+        }
+        if ($event->page_matches("note/nuke_notes", permission: Permissions::NOTES_ADMIN)) {
+            $image_id = int_escape($event->req_POST("image_id"));
+            $this->nuke_notes($image_id);
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
         }
     }
 
@@ -158,29 +139,32 @@ class Notes extends Extension
     /*
      * HERE WE LOAD THE NOTES IN THE IMAGE
      */
-    public function onDisplayingImage(DisplayingImageEvent $event)
+    public function onDisplayingImage(DisplayingImageEvent $event): void
     {
         global $page, $user;
 
         //display form on image event
         $notes = $this->get_notes($event->image->id);
-        $this->theme->display_note_system($page, $event->image->id, $notes, $user->can(Permissions::NOTES_ADMIN));
+        $this->theme->display_note_system($page, $event->image->id, $notes, $user->can(Permissions::NOTES_ADMIN), $user->can(Permissions::NOTES_EDIT));
     }
 
 
     /*
      * HERE WE ADD THE BUTTONS ON SIDEBAR
      */
-    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
+    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event): void
     {
         global $user;
-        if (!$user->is_anonymous()) {
+        if ($user->can(Permissions::NOTES_CREATE)) {
             $event->add_part($this->theme->note_button($event->image->id));
-            $event->add_part($this->theme->request_button($event->image->id));
+
             if ($user->can(Permissions::NOTES_ADMIN)) {
                 $event->add_part($this->theme->nuke_notes_button($event->image->id));
                 $event->add_part($this->theme->nuke_requests_button($event->image->id));
             }
+        }
+        if ($user->can(Permissions::NOTES_REQUEST)) {
+            $event->add_part($this->theme->request_button($event->image->id));
         }
     }
 
@@ -188,7 +172,7 @@ class Notes extends Extension
     /*
      * HERE WE ADD QUERYLETS TO ADD SEARCH SYSTEM
      */
-    public function onSearchTermParse(SearchTermParseEvent $event)
+    public function onSearchTermParse(SearchTermParseEvent $event): void
     {
         if (is_null($event->term)) {
             return;
@@ -211,9 +195,9 @@ class Notes extends Extension
         }
     }
 
-    public function onHelpPageBuilding(HelpPageBuildingEvent $event)
+    public function onHelpPageBuilding(HelpPageBuildingEvent $event): void
     {
-        if ($event->key===HelpPages::SEARCH) {
+        if ($event->key === HelpPages::SEARCH) {
             $block = new Block();
             $block->header = "Notes";
             $block->body = $this->theme->get_help_html();
@@ -224,6 +208,8 @@ class Notes extends Extension
 
     /**
      * HERE WE GET ALL NOTES FOR DISPLAYED IMAGE.
+     *
+     * @return array<string, mixed>
      */
     private function get_notes(int $imageID): array
     {
@@ -234,53 +220,67 @@ class Notes extends Extension
             FROM notes
             WHERE enable = :enable AND image_id = :image_id
             ORDER BY date ASC
-        ", ['enable'=>'1', 'image_id'=>$imageID]);
+        ", ['enable' => '1', 'image_id' => $imageID]);
     }
 
 
     /*
      * HERE WE ADD A NOTE TO DATABASE
      */
-    private function add_new_note()
+    private function add_new_note(): int
     {
         global $database, $user;
 
-        $imageID    = int_escape($_POST["image_id"]);
-        $user_id    = $user->id;
-        $noteX1     = int_escape($_POST["note_x1"]);
-        $noteY1     = int_escape($_POST["note_y1"]);
-        $noteHeight = int_escape($_POST["note_height"]);
-        $noteWidth  = int_escape($_POST["note_width"]);
-        $noteText   = html_escape($_POST["note_text"]);
+        $note = json_decode(\Safe\file_get_contents('php://input'), true);
 
         $database->execute(
             "
 				INSERT INTO notes (enable, image_id, user_id, user_ip, date, x1, y1, height, width, note)
 				VALUES (:enable, :image_id, :user_id, :user_ip, now(), :x1, :y1, :height, :width, :note)",
-            ['enable'=>1, 'image_id'=>$imageID, 'user_id'=>$user_id, 'user_ip'=>$_SERVER['REMOTE_ADDR'], 'x1'=>$noteX1, 'y1'=>$noteY1, 'height'=>$noteHeight, 'width'=>$noteWidth, 'note'=>$noteText]
+            [
+                'enable' => 1,
+                'image_id' => $note['image_id'],
+                'user_id' => $user->id,
+                'user_ip' => get_real_ip(),
+                'x1' => $note['x1'],
+                'y1' => $note['y1'],
+                'height' => $note['height'],
+                'width' => $note['width'],
+                'note' => $note['note'],
+            ]
         );
 
         $noteID = $database->get_last_insert_id('notes_id_seq');
 
         log_info("notes", "Note added {$noteID} by {$user->name}");
 
-        $database->execute("UPDATE images SET notes=(SELECT COUNT(*) FROM notes WHERE image_id=:id1) WHERE id=:id2", ['id1'=>$imageID, 'id2'=>$imageID]);
+        $database->execute("UPDATE images SET notes=(SELECT COUNT(*) FROM notes WHERE image_id=:id) WHERE id=:id", ['id' => $note['image_id']]);
 
-        $this->add_history(1, $noteID, $imageID, $noteX1, $noteY1, $noteHeight, $noteWidth, $noteText);
+        $this->add_history(
+            1,
+            $noteID,
+            $note['image_id'],
+            $note['x1'],
+            $note['y1'],
+            $note['height'],
+            $note['width'],
+            $note['note']
+        );
+
+        return $noteID;
     }
 
-    private function add_note_request()
+    private function add_note_request(int $image_id): void
     {
         global $database, $user;
 
-        $image_id = int_escape($_POST["image_id"]);
         $user_id = $user->id;
 
         $database->execute(
             "
 				INSERT INTO note_request (image_id, user_id, date)
 				VALUES (:image_id, :user_id, now())",
-            ['image_id'=>$image_id, 'user_id'=>$user_id]
+            ['image_id' => $image_id, 'user_id' => $user_id]
         );
 
         $resultID = $database->get_last_insert_id('note_request_id_seq');
@@ -288,134 +288,110 @@ class Notes extends Extension
         log_info("notes", "Note requested {$resultID} by {$user->name}");
     }
 
-    private function update_note()
+    private function update_note(): void
     {
         global $database;
 
-        $note = [
-            "x1"     => int_escape($_POST["note_x1"]),
-            "y1"     => int_escape($_POST["note_y1"]),
-            "height" => int_escape($_POST["note_height"]),
-            "width"  => int_escape($_POST["note_width"]),
-            "note"   => $_POST["note_text"],
-            "image_id" => int_escape($_POST["image_id"]),
-            "id"     => int_escape($_POST["note_id"])
-        ];
+        $note = json_decode(\Safe\file_get_contents('php://input'), true);
 
         // validate parameters
-        if (array_search(null, $note)|| strlen($note['noteText']) == 0) {
+        if (empty($note['note'])) {
             return;
         }
 
         $database->execute("
 			UPDATE notes
 			SET x1 = :x1, y1 = :y1, height = :height, width = :width, note = :note
-			WHERE image_id = :image_id AND id = :id", $note);
+			WHERE image_id = :image_id AND id = :note_id", $note);
 
-        $this->add_history(1, $note['id'], $note['image_id'], $note['x1'], $note['y1'], $note['height'], $note['width'], $note['note']);
+        $this->add_history(1, $note['note_id'], $note['image_id'], $note['x1'], $note['y1'], $note['height'], $note['width'], $note['note']);
     }
 
-    private function delete_note()
+    private function delete_note(): void
     {
         global $user, $database;
 
-        $imageID = int_escape($_POST["image_id"]);
-        $noteID = int_escape($_POST["note_id"]);
-
-        // validate parameters
-        if (is_null($imageID) || !is_numeric($imageID) || is_null($noteID)  || !is_numeric($noteID)) {
-            return;
-        }
-
+        $note = json_decode(\Safe\file_get_contents('php://input'), true);
         $database->execute("
 			UPDATE notes SET enable = :enable
 			WHERE image_id = :image_id AND id = :id
-		", ['enable'=>0, 'image_id'=>$imageID, 'id'=>$noteID]);
+		", ['enable' => 0, 'image_id' => $note["image_id"], 'id' => $note["note_id"]]);
 
-        log_info("notes", "Note deleted {$noteID} by {$user->name}");
+        log_info("notes", "Note deleted {$note["note_id"]} by {$user->name}");
     }
 
-    private function nuke_notes()
+    private function nuke_notes(int $image_id): void
     {
         global $database, $user;
-        $image_id = int_escape($_POST["image_id"]);
-        $database->execute("DELETE FROM notes WHERE image_id = :image_id", ['image_id'=>$image_id]);
+        $database->execute("DELETE FROM notes WHERE image_id = :image_id", ['image_id' => $image_id]);
         log_info("notes", "Notes deleted from {$image_id} by {$user->name}");
     }
 
-    private function nuke_requests()
+    private function nuke_requests(int $image_id): void
     {
         global $database, $user;
-        $image_id = int_escape($_POST["image_id"]);
 
-        $database->execute("DELETE FROM note_request WHERE image_id = :image_id", ['image_id'=>$image_id]);
+        $database->execute("DELETE FROM note_request WHERE image_id = :image_id", ['image_id' => $image_id]);
 
         log_info("notes", "Requests deleted from {$image_id} by {$user->name}");
     }
 
-    private function get_notes_list(PageRequestEvent $event)
+    private function get_notes_list(int $pageNumber): void
     {
         global $database, $config;
 
-        $pageNumber = $event->try_page_num(1);
-
         $notesPerPage = $config->get_int('notesNotesPerPage');
+        $totalPages = (int) ceil($database->get_one("SELECT COUNT(DISTINCT image_id) FROM notes") / $notesPerPage);
 
         //$result = $database->get_all("SELECT * FROM pool_images WHERE pool_id=:pool_id", ['pool_id'=>$poolID]);
-        $result = $database->execute(
+        $image_ids = $database->get_col(
             "
 			SELECT DISTINCT image_id
 			FROM notes
 			WHERE enable = :enable
 			ORDER BY date DESC LIMIT :limit OFFSET :offset",
-            ['enable'=>1, 'offset'=>$pageNumber * $notesPerPage, 'limit'=>$notesPerPage]
+            ['enable' => 1, 'offset' => $pageNumber * $notesPerPage, 'limit' => $notesPerPage]
         );
 
-        $totalPages = ceil($database->get_one("SELECT COUNT(DISTINCT image_id) FROM notes") / $notesPerPage);
-
         $images = [];
-        while ($row = $result->fetch()) {
-            $images[] = [Image::by_id($row["image_id"])];
+        foreach ($image_ids as $id) {
+            $images[] = Image::by_id_ex($id);
         }
 
         $this->theme->display_note_list($images, $pageNumber + 1, $totalPages);
     }
 
-    private function get_notes_requests(PageRequestEvent $event)
+    private function get_notes_requests(int $pageNumber): void
     {
         global $config, $database;
 
-        $pageNumber = $event->try_page_num(1);
-
         $requestsPerPage = $config->get_int('notesRequestsPerPage');
 
-
         //$result = $database->get_all("SELECT * FROM pool_images WHERE pool_id=:pool_id", ['pool_id'=>$poolID]);
-
 
         $result = $database->execute(
             "
 				SELECT DISTINCT image_id
 				FROM note_request
 				ORDER BY date DESC LIMIT :limit OFFSET :offset",
-            ["offset"=>$pageNumber * $requestsPerPage, "limit"=>$requestsPerPage]
+            ["offset" => $pageNumber * $requestsPerPage, "limit" => $requestsPerPage]
         );
 
-        $totalPages = ceil($database->get_one("SELECT COUNT(*) FROM note_request") / $requestsPerPage);
+        $totalPages = (int) ceil($database->get_one("SELECT COUNT(*) FROM note_request") / $requestsPerPage);
 
         $images = [];
         while ($row = $result->fetch()) {
-            $images[] = [Image::by_id($row["image_id"])];
+            $images[] = Image::by_id_ex($row["image_id"]);
         }
 
         $this->theme->display_note_requests($images, $pageNumber + 1, $totalPages);
     }
 
-    private function add_history($noteEnable, $noteID, $imageID, $noteX1, $noteY1, $noteHeight, $noteWidth, $noteText)
+    private function add_history(int $noteEnable, int $noteID, int $imageID, int $noteX1, int $noteY1, int $noteHeight, int $noteWidth, string $noteText): void
     {
         global $user, $database;
 
-        $reviewID = $database->get_one("SELECT COUNT(*) FROM note_histories WHERE note_id = :note_id", ['note_id'=>$noteID]);
+        $reviewID = $database->get_one("SELECT COUNT(*) FROM note_histories WHERE note_id = :note_id", ['note_id' => $noteID]);
         $reviewID = $reviewID + 1;
 
         $database->execute(
@@ -423,54 +399,60 @@ class Notes extends Extension
 				INSERT INTO note_histories (note_enable, note_id, review_id, image_id, user_id, user_ip, date, x1, y1, height, width, note)
 				VALUES (:note_enable, :note_id, :review_id, :image_id, :user_id, :user_ip, now(), :x1, :y1, :height, :width, :note)
 			",
-            ['note_enable'=>$noteEnable, 'note_id'=>$noteID, 'review_id'=>$reviewID, 'image_id'=>$imageID, 'user_id'=>$user->id, 'user_ip'=>$_SERVER['REMOTE_ADDR'],
-            'x1'=>$noteX1, 'y1'=>$noteY1, 'height'=>$noteHeight, 'width'=>$noteWidth, 'note'=>$noteText]
+            [
+                'note_enable' => $noteEnable,
+                'note_id' => $noteID,
+                'review_id' => $reviewID,
+                'image_id' => $imageID,
+                'user_id' => $user->id,
+                'user_ip' => get_real_ip(),
+                'x1' => $noteX1,
+                'y1' => $noteY1,
+                'height' => $noteHeight,
+                'width' => $noteWidth,
+                'note' => $noteText
+            ]
         );
     }
 
-    private function get_histories(PageRequestEvent $event)
+    private function get_histories(int $pageNumber): void
     {
         global $config, $database;
-
-        $pageNumber = $event->try_page_num(1);
 
         $historiesPerPage = $config->get_int('notesHistoriesPerPage');
 
         //ORDER BY IMAGE & DATE
         $histories = $database->get_all(
-            "SELECT h.note_id, h.review_id, h.image_id, h.date, h.note, u.name AS user_name ".
-                                        "FROM note_histories AS h ".
-                                        "INNER JOIN users AS u ".
-                                        "ON u.id = h.user_id ".
-                                        "ORDER BY date DESC LIMIT :limit OFFSET :offset",
-            ['offset'=>$pageNumber * $historiesPerPage, 'limit'=>$historiesPerPage]
+            "SELECT h.note_id, h.review_id, h.image_id, h.date, h.note, u.name AS user_name " .
+            "FROM note_histories AS h " .
+            "INNER JOIN users AS u " .
+            "ON u.id = h.user_id " .
+            "ORDER BY date DESC LIMIT :limit OFFSET :offset",
+            ['offset' => $pageNumber * $historiesPerPage, 'limit' => $historiesPerPage]
         );
 
-        $totalPages = ceil($database->get_one("SELECT COUNT(*) FROM note_histories") / $historiesPerPage);
+        $totalPages = (int) ceil($database->get_one("SELECT COUNT(*) FROM note_histories") / $historiesPerPage);
 
         $this->theme->display_histories($histories, $pageNumber + 1, $totalPages);
     }
 
-    private function get_history(PageRequestEvent $event)
+    private function get_history(int $noteID, int $pageNumber): void
     {
         global $config, $database;
-
-        $noteID = $event->get_arg(1);
-        $pageNumber = $event->try_page_num(2);
 
         $historiesPerPage = $config->get_int('notesHistoriesPerPage');
 
         $histories = $database->get_all(
-            "SELECT h.note_id, h.review_id, h.image_id, h.date, h.note, u.name AS user_name ".
-                                        "FROM note_histories AS h ".
-                                        "INNER JOIN users AS u ".
-                                        "ON u.id = h.user_id ".
-                                        "WHERE note_id = :note_id ".
-                                        "ORDER BY date DESC LIMIT :limit OFFSET :offset",
-            ['note_id'=>$noteID, 'offset'=>$pageNumber * $historiesPerPage, 'limit'=>$historiesPerPage]
+            "SELECT h.note_id, h.review_id, h.image_id, h.date, h.note, u.name AS user_name " .
+            "FROM note_histories AS h " .
+            "INNER JOIN users AS u " .
+            "ON u.id = h.user_id " .
+            "WHERE note_id = :note_id " .
+            "ORDER BY date DESC LIMIT :limit OFFSET :offset",
+            ['note_id' => $noteID, 'offset' => $pageNumber * $historiesPerPage, 'limit' => $historiesPerPage]
         );
 
-        $totalPages = ceil($database->get_one("SELECT COUNT(*) FROM note_histories WHERE note_id = :note_id", ['note_id'=>$noteID]) / $historiesPerPage);
+        $totalPages = (int) ceil($database->get_one("SELECT COUNT(*) FROM note_histories WHERE note_id = :note_id", ['note_id' => $noteID]) / $historiesPerPage);
 
         $this->theme->display_history($histories, $pageNumber + 1, $totalPages);
     }
@@ -478,26 +460,26 @@ class Notes extends Extension
     /**
      * HERE GO BACK IN HISTORY AND SET THE OLD NOTE. IF WAS REMOVED WE RE-ADD IT.
      */
-    private function revert_history(int $noteID, int $reviewID)
+    private function revert_history(int $noteID, int $reviewID): void
     {
         global $database;
 
-        $history = $database->get_row("SELECT * FROM note_histories WHERE note_id = :note_id AND review_id = :review_id", ['note_id'=>$noteID, 'review_id'=>$reviewID]);
+        $history = $database->get_row("SELECT * FROM note_histories WHERE note_id = :note_id AND review_id = :review_id", ['note_id' => $noteID, 'review_id' => $reviewID]);
 
         $noteEnable = $history['note_enable'];
-        $noteID     = $history['note_id'];
-        $imageID    = $history['image_id'];
-        $noteX1     = $history['x1'];
-        $noteY1     = $history['y1'];
+        $noteID = $history['note_id'];
+        $imageID = $history['image_id'];
+        $noteX1 = $history['x1'];
+        $noteY1 = $history['y1'];
         $noteHeight = $history['height'];
-        $noteWidth  = $history['width'];
-        $noteText   = $history['note'];
+        $noteWidth = $history['width'];
+        $noteText = $history['note'];
 
         $database->execute("
 			UPDATE notes
 			SET enable = :enable, x1 = :x1, y1 = :y1, height = :height, width = :width, note = :note
 			WHERE image_id = :image_id AND id = :id
-		", ['enable'=>1, 'x1'=>$noteX1, 'y1'=>$noteY1, 'height'=>$noteHeight, 'width'=>$noteWidth, 'note'=>$noteText, 'image_id'=>$imageID, 'id'=>$noteID]);
+		", ['enable' => 1, 'x1' => $noteX1, 'y1' => $noteY1, 'height' => $noteHeight, 'width' => $noteWidth, 'note' => $noteText, 'image_id' => $imageID, 'id' => $noteID]);
 
         $this->add_history($noteEnable, $noteID, $imageID, $noteX1, $noteY1, $noteHeight, $noteWidth, $noteText);
     }

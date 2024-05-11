@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class IPBanInfo extends ExtensionInfo
 {
     public const KEY = "ipban";
@@ -11,6 +13,7 @@ class IPBanInfo extends ExtensionInfo
     public string $url = self::SHIMMIE_URL;
     public array $authors = self::SHISH_AUTHOR;
     public string $license = self::LICENSE_GPLV2;
+    public ExtensionCategory $category = ExtensionCategory::MODERATION;
     public string $description = "Ban IP addresses";
     public ?string $documentation =
 "<b>Adding a Ban</b>

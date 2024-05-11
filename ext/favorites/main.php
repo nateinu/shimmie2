@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class FavoriteSetEvent extends Event
 {
     public int $image_id;
@@ -23,9 +25,14 @@ class FavoriteSetEvent extends Event
 class Favorites extends Extension
 {
     /** @var FavoritesTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event)
+    public function onInitExt(InitExtEvent $event): void
+    {
+        Image::$prop_types["favorites"] = ImagePropType::INT;
+    }
+
+    public function onImageAdminBlockBuilding(ImageAdminBlockBuildingEvent $event): void
     {
         global $database, $user;
         if (!$user->is_anonymous()) {
@@ -34,14 +41,18 @@ class Favorites extends Extension
 
             $is_favorited = $database->get_one(
                 "SELECT COUNT(*) AS ct FROM user_favorites WHERE user_id = :user_id AND image_id = :image_id",
-                ["user_id"=>$user_id, "image_id"=>$image_id]
+                ["user_id" => $user_id, "image_id" => $image_id]
             ) > 0;
 
-            $event->add_part((string)$this->theme->get_voter_html($event->image, $is_favorited));
+            if($is_favorited) {
+                $event->add_button("Un-Favorite", "favourite/remove/{$event->image->id}");
+            } else {
+                $event->add_button("Favorite", "favourite/add/{$event->image->id}");
+            }
         }
     }
 
-    public function onDisplayingImage(DisplayingImageEvent $event)
+    public function onDisplayingImage(DisplayingImageEvent $event): void
     {
         $people = $this->list_persons_who_have_favorited($event->image);
         if (count($people) > 0) {
@@ -49,47 +60,50 @@ class Favorites extends Extension
         }
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $page, $user;
-        if ($event->page_matches("change_favorite") && !$user->is_anonymous() && $user->check_auth_token()) {
-            $image_id = int_escape($_POST['image_id']);
-            if ((($_POST['favorite_action'] == "set") || ($_POST['favorite_action'] == "unset")) && ($image_id > 0)) {
-                if ($_POST['favorite_action'] == "set") {
-                    send_event(new FavoriteSetEvent($image_id, $user, true));
-                    log_debug("favourite", "Favourite set for $image_id", "Favourite added");
-                } else {
-                    send_event(new FavoriteSetEvent($image_id, $user, false));
-                    log_debug("favourite", "Favourite removed for $image_id", "Favourite removed");
-                }
-            }
+        if ($user->is_anonymous()) {
+            return;
+        } // FIXME: proper permissions
+
+        if ($event->page_matches("favourite/add/{image_id}", method: "POST")) {
+            $image_id = $event->get_iarg('image_id');
+            send_event(new FavoriteSetEvent($image_id, $user, true));
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
+        }
+        if ($event->page_matches("favourite/remove/{image_id}", method: "POST")) {
+            $image_id = $event->get_iarg('image_id');
+            send_event(new FavoriteSetEvent($image_id, $user, false));
             $page->set_mode(PageMode::REDIRECT);
             $page->set_redirect(make_link("post/view/$image_id"));
         }
     }
 
-    public function onUserPageBuilding(UserPageBuildingEvent $event)
+    public function onUserPageBuilding(UserPageBuildingEvent $event): void
     {
-        $i_favorites_count = Image::count_images(["favorited_by={$event->display_user->name}"]);
-        $i_days_old = ((time() - strtotime($event->display_user->join_date)) / 86400) + 1;
+        $i_favorites_count = Search::count_images(["favorited_by={$event->display_user->name}"]);
+        $i_days_old = ((time() - \Safe\strtotime($event->display_user->join_date)) / 86400) + 1;
         $h_favorites_rate = sprintf("%.1f", ($i_favorites_count / $i_days_old));
-        $favorites_link = make_link("post/list/favorited_by={$event->display_user->name}/1");
-        $event->add_stats("<a href='$favorites_link'>Posts favorited</a>: $i_favorites_count, $h_favorites_rate per day");
+        $favorites_link = search_link(["favorited_by={$event->display_user->name}"]);
+        $event->add_part("<a href='$favorites_link'>Posts favorited</a>: $i_favorites_count, $h_favorites_rate per day");
     }
 
-    public function onImageInfoSet(ImageInfoSetEvent $event)
+    public function onImageInfoSet(ImageInfoSetEvent $event): void
     {
         global $user;
+        $action = $event->get_param("favorite_action");
         if (
             $user->can(Permissions::EDIT_FAVOURITES) &&
-            in_array('favorite_action', $_POST) &&
-            (($_POST['favorite_action'] == "set") || ($_POST['favorite_action'] == "unset"))
+            !is_null($action) &&
+            ($action == "set" || $action == "unset")
         ) {
-            send_event(new FavoriteSetEvent($event->image->id, $user, ($_POST['favorite_action'] == "set")));
+            send_event(new FavoriteSetEvent($event->image->id, $user, $action == "set"));
         }
     }
 
-    public function onFavoriteSet(FavoriteSetEvent $event)
+    public function onFavoriteSet(FavoriteSetEvent $event): void
     {
         global $user;
         $this->add_vote($event->image_id, $user->id, $event->do_set);
@@ -97,26 +111,26 @@ class Favorites extends Extension
 
     // FIXME: this should be handled by the foreign key. Check that it
     // is, and then remove this
-    public function onImageDeletion(ImageDeletionEvent $event)
+    public function onImageDeletion(ImageDeletionEvent $event): void
     {
         global $database;
-        $database->execute("DELETE FROM user_favorites WHERE image_id=:image_id", ["image_id"=>$event->image->id]);
+        $database->execute("DELETE FROM user_favorites WHERE image_id=:image_id", ["image_id" => $event->image->id]);
     }
 
-    public function onParseLinkTemplate(ParseLinkTemplateEvent $event)
+    public function onParseLinkTemplate(ParseLinkTemplateEvent $event): void
     {
-        $event->replace('$favorites', (string)$event->image->favorites);
+        $event->replace('$favorites', (string)$event->image['favorites']);
     }
 
-    public function onUserBlockBuilding(UserBlockBuildingEvent $event)
+    public function onUserBlockBuilding(UserBlockBuildingEvent $event): void
     {
         global $user;
 
         $username = url_escape($user->name);
-        $event->add_link("My Favorites", make_link("post/list/favorited_by=$username/1"), 20);
+        $event->add_link("My Favorites", search_link(["favorited_by=$username"]), 20);
     }
 
-    public function onSearchTermParse(SearchTermParseEvent $event)
+    public function onSearchTermParse(SearchTermParseEvent $event): void
     {
         if (is_null($event->term)) {
             return;
@@ -133,24 +147,28 @@ class Favorites extends Extension
         } elseif (preg_match("/^favorited_by_userno[=|:](\d+)$/i", $event->term, $matches)) {
             $user_id = int_escape($matches[1]);
             $event->add_querylet(new Querylet("images.id IN (SELECT image_id FROM user_favorites WHERE user_id = $user_id)"));
+        } elseif (preg_match("/^order[=|:](favorites)(?:_(desc|asc))?$/i", $event->term, $matches)) {
+            $default_order_for_column = "DESC";
+            $sort = isset($matches[2]) ? strtoupper($matches[2]) : $default_order_for_column;
+            $event->order = "images.favorites $sort";
         }
     }
 
-    public function onHelpPageBuilding(HelpPageBuildingEvent $event)
+    public function onHelpPageBuilding(HelpPageBuildingEvent $event): void
     {
-        if ($event->key===HelpPages::SEARCH) {
-            $event->add_block(new Block("Favorites", (string)$this->theme->get_help_html()));
+        if ($event->key === HelpPages::SEARCH) {
+            $event->add_block(new Block("Favorites", $this->theme->get_help_html()));
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
         global $user;
-        if ($event->parent=="posts") {
+        if ($event->parent == "posts") {
             $event->add_nav_link("posts_favorites", new Link("post/list/favorited_by={$user->name}/1"), "My Favorites");
         }
 
-        if ($event->parent==="user") {
+        if ($event->parent === "user") {
             if ($user->can(Permissions::MANAGE_ADMINTOOLS)) {
                 $username = url_escape($user->name);
                 $event->add_nav_link("favorites", new Link("post/list/favorited_by=$username/1"), "My Favorites");
@@ -158,7 +176,7 @@ class Favorites extends Extension
         }
     }
 
-    public function onBulkActionBlockBuilding(BulkActionBlockBuildingEvent $event)
+    public function onBulkActionBlockBuilding(BulkActionBlockBuildingEvent $event): void
     {
         global $user;
 
@@ -168,7 +186,7 @@ class Favorites extends Extension
         }
     }
 
-    public function onBulkAction(BulkActionEvent $event)
+    public function onBulkAction(BulkActionEvent $event): void
     {
         global $page, $user;
 
@@ -196,7 +214,7 @@ class Favorites extends Extension
         }
     }
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 
@@ -227,30 +245,30 @@ class Favorites extends Extension
         }
     }
 
-    private function add_vote(int $image_id, int $user_id, bool $do_set)
+    private function add_vote(int $image_id, int $user_id, bool $do_set): void
     {
         global $database;
         if ($do_set) {
-            if (!$database->get_row("select 1 from user_favorites where image_id=:image_id and user_id=:user_id", ["image_id"=>$image_id, "user_id"=>$user_id])) {
+            if (!$database->get_row("select 1 from user_favorites where image_id=:image_id and user_id=:user_id", ["image_id" => $image_id, "user_id" => $user_id])) {
                 $database->execute(
                     "INSERT INTO user_favorites(image_id, user_id, created_at) VALUES(:image_id, :user_id, NOW())",
-                    ["image_id"=>$image_id, "user_id"=>$user_id]
+                    ["image_id" => $image_id, "user_id" => $user_id]
                 );
             }
         } else {
             $database->execute(
                 "DELETE FROM user_favorites WHERE image_id = :image_id AND user_id = :user_id",
-                ["image_id"=>$image_id, "user_id"=>$user_id]
+                ["image_id" => $image_id, "user_id" => $user_id]
             );
         }
         $database->execute(
             "UPDATE images SET favorites=(SELECT COUNT(*) FROM user_favorites WHERE image_id=:image_id) WHERE id=:user_id",
-            ["image_id"=>$image_id, "user_id"=>$user_id]
+            ["image_id" => $image_id, "user_id" => $user_id]
         );
     }
 
     /**
-     * #return string[]
+     * @return string[]
      */
     private function list_persons_who_have_favorited(Image $image): array
     {
@@ -258,7 +276,7 @@ class Favorites extends Extension
 
         return $database->get_col(
             "SELECT name FROM users WHERE id IN (SELECT user_id FROM user_favorites WHERE image_id = :image_id) ORDER BY name",
-            ["image_id"=>$image->id]
+            ["image_id" => $image->id]
         );
     }
 }

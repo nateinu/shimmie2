@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class CustomIndexTheme extends IndexTheme
 {
     /**
-     * #param Image[] $images
+     * @param Image[] $images
      */
-    public function display_page(Page $page, array $images)
+    public function display_page(Page $page, array $images): void
     {
         $this->display_shortwiki($page);
 
@@ -24,30 +26,30 @@ class CustomIndexTheme extends IndexTheme
     }
 
     /**
-     * #param string[] $search_terms
+     * @param string[] $search_terms
      */
     protected function build_navigation(int $page_number, int $total_pages, array $search_terms): string
     {
         $h_search_string = count($search_terms) == 0 ? "" : html_escape(implode(" ", $search_terms));
-        $h_search_link = make_link();
+        $h_search_link = search_link();
         return "
 			<p><form action='$h_search_link' method='GET'>
 				<input name='search' type='text' value='$h_search_string' class='autocomplete_tags' placeholder=''  style='width:75%'/>
 				<input type='submit' value='Go' style='width:20%'>
-				<input type='hidden' name='q' value='/post/list'>
+				<input type='hidden' name='q' value='post/list'>
 			</form>
 			<div id='search_completions'></div>";
     }
 
     /**
-     * #param Image[] $images
+     * @param Image[] $images
      */
     protected function build_table(array $images, ?string $query): string
     {
         $h_query = html_escape($query);
         $table = "<div class='shm-image-list' data-query='$h_query'>";
         foreach ($images as $image) {
-            $table .= "\t<span class=\"thumb\">" . $this->build_thumb_html($image) . "</span>\n";
+            $table .= $this->build_thumb_html($image) . "\n";
         }
         $table .= "</div>";
         return $table;

@@ -2,9 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class TagCategoriesTheme extends Themelet
 {
-    public function show_tag_categories(Page $page, $tc_dict)
+    /**
+     * @param array<array{category: string, display_singular: string, display_multiple: string, color: string}> $tc_dict
+     */
+    public function show_tag_categories(Page $page, array $tc_dict): void
     {
         $tc_block_index = 0;
         $html = '';
@@ -17,7 +22,7 @@ class TagCategoriesTheme extends Themelet
             $tag_color = $row['color'];
             $html .= '
             <div class="tagcategoryblock">
-            <form name="input" action="'.make_link("tags/categories").'" method="post">
+            '.make_form(make_link("tags/categories")).'
                 <table>
                 <tr>
                     <td>Category</td>
@@ -44,12 +49,12 @@ class TagCategoriesTheme extends Themelet
                 <tr>
                     <td>Color</td>
                     <td>
-                        <span>'.$tag_color.'</span>
-                        <input type="text" name="tc_color" style="display:none" value="'.$tag_color.'">
+                        <span>'.$tag_color.'</span><div class="tc_colorswatch" style="background-color:'.$tag_color.'"></div>
+                        <input type="color" name="tc_color" style="display:none" value="'.$tag_color.'">
                     </td>
                 </tr>
                 </table>
-                <button class="tc_edit" type="button" onclick="$(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') tr + tr td span\').hide(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') td input\').show(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_edit\').hide(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_submit\').show();">Edit</button>
+                <button class="tc_edit" type="button" onclick="$(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') tr + tr td span\').hide(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') td input\').show(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_edit\').hide(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_colorswatch\').hide(); $(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_submit\').show();">Edit</button>
                 <button class="tc_submit" type="submit" style="display:none;" name="tc_status" value="edit">Submit</button>
                 <button class="tc_submit" type="button" style="display:none;" onclick="$(\'.tagcategoryblock:nth-of-type('.$tc_block_index.') .tc_delete\').show(); $(this).hide();">Delete</button>
                 <button class="tc_delete" type="submit" style="display:none;" name="tc_status" value="delete">Really, really delete</button>
@@ -65,7 +70,7 @@ class TagCategoriesTheme extends Themelet
         $tag_color = '#EE5542';
         $html .= '
         <div class="tagcategoryblock">
-        <form name="input" action="'.make_link("tags/categories").'" method="post">
+        '.make_form(make_link("tags/categories")).'
             <table>
             <tr>
                 <td>Category</td>
@@ -98,6 +103,9 @@ class TagCategoriesTheme extends Themelet
         ';
 
         // add html to stuffs
+        $page->set_title("Tag Categories");
+        $page->set_heading("Tag Categories");
+        $page->add_block(new NavBlock());
         $page->add_block(new Block("Editing", $html, "main", 10));
     }
 

@@ -1,16 +1,10 @@
 backup
 data
-images
-thumbs
-*.phar
-*.sqlite
-*.cache
-.devcontainer
-trace.json
+.docker/entrypoint.d/config.json
+.sl
 
 #Composer
 composer.phar
-composer.lock
 /vendor/
 
 # Created by http://www.gitignore.io

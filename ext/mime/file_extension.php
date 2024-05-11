@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class FileExtension
 {
     public const ANI = 'ani';
@@ -75,12 +77,12 @@ class FileExtension
             return null;
         }
 
-        if ($mime==MimeType::OCTET_STREAM) {
+        if ($mime == MimeType::OCTET_STREAM) {
             return null;
         }
 
         $data = MimeMap::get_for_mime($mime);
-        if ($data!=null) {
+        if ($data != null) {
             return $data[MimeMap::MAP_EXT][0];
         }
         return null;
@@ -88,6 +90,8 @@ class FileExtension
 
     /**
      * Returns all the file extension associated with the specified mimetype.
+     *
+     * @return string[]
      */
     public static function get_all_for_mime(string $mime): array
     {
@@ -95,12 +99,12 @@ class FileExtension
             return [];
         }
 
-        if ($mime==MimeType::OCTET_STREAM) {
+        if ($mime == MimeType::OCTET_STREAM) {
             return [];
         }
 
         $data = MimeMap::get_for_mime($mime);
-        if ($data!=null) {
+        if ($data != null) {
             return $data[MimeMap::MAP_EXT];
         }
 

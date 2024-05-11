@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class WordFilter extends Extension
 {
     // before emoticon filter
@@ -10,13 +12,13 @@ class WordFilter extends Extension
         return 40;
     }
 
-    public function onTextFormatting(TextFormattingEvent $event)
+    public function onTextFormatting(TextFormattingEvent $event): void
     {
         $event->formatted = $this->filter($event->formatted);
         $event->stripped  = $this->filter($event->stripped);
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $sb = $event->panel->create_new_block("Word Filter");
         $sb->add_longtext_option("word_filter");
@@ -40,7 +42,7 @@ class WordFilter extends Extension
     }
 
     /**
-     * #return string[]
+     * @return string[]
      */
     private function get_map(): array
     {

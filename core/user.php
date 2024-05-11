@@ -2,11 +2,14 @@
 
 declare(strict_types=1);
 
-function _new_user(array $row): User
-{
-    return new User($row);
-}
+namespace Shimmie2;
 
+use GQLA\Type;
+use GQLA\Field;
+use GQLA\Query;
+use MicroHTML\HTMLElement;
+
+use function MicroHTML\INPUT;
 
 /**
  * Class User
@@ -15,13 +18,17 @@ function _new_user(array $row): User
  *
  * The currently logged in user will always be accessible via the global variable $user.
  */
+#[Type(name: "User")]
 class User
 {
     public int $id;
+    #[Field]
     public string $name;
     public ?string $email;
+    #[Field]
     public string $join_date;
     public ?string $passhash;
+    #[Field]
     public UserClass $class;
 
     /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
@@ -37,36 +44,53 @@ class User
      * One will very rarely construct a user directly, more common
      * would be to use User::by_id, User::by_session, etc.
      *
-     * @throws SCoreException
+     * @param array<string|int, mixed> $row
      */
     public function __construct(array $row)
     {
-        global $_shm_user_classes;
-
         $this->id = int_escape((string)$row['id']);
         $this->name = $row['name'];
         $this->email = $row['email'];
         $this->join_date = $row['joindate'];
         $this->passhash = $row['pass'];
 
-        if (array_key_exists($row["class"], $_shm_user_classes)) {
-            $this->class = $_shm_user_classes[$row["class"]];
+        if (array_key_exists($row["class"], UserClass::$known_classes)) {
+            $this->class = UserClass::$known_classes[$row["class"]];
         } else {
-            throw new SCoreException("User '{$this->name}' has invalid class '{$row["class"]}'");
+            throw new ServerError("User '{$this->name}' has invalid class '{$row["class"]}'");
         }
     }
+
+    #[Query]
+    public static function me(): User
+    {
+        global $user;
+        return $user;
+    }
+
+    #[Field(name: "user_id")]
+    public function graphql_oid(): int
+    {
+        return $this->id;
+    }
+    #[Field(name: "id")]
+    public function graphql_guid(): string
+    {
+        return "user:{$this->id}";
+    }
+
 
     public static function by_session(string $name, string $session): ?User
     {
         global $cache, $config, $database;
         $row = $cache->get("user-session:$name-$session");
-        if (!$row) {
-            if ($database->get_driver_name() === DatabaseDriver::MYSQL) {
+        if (is_null($row)) {
+            if ($database->get_driver_id() === DatabaseDriverID::MYSQL) {
                 $query = "SELECT * FROM users WHERE name = :name AND md5(concat(pass, :ip)) = :sess";
             } else {
                 $query = "SELECT * FROM users WHERE name = :name AND md5(pass || :ip) = :sess";
             }
-            $row = $database->get_row($query, ["name"=>$name, "ip"=>get_session_ip($config), "sess"=>$session]);
+            $row = $database->get_row($query, ["name" => $name, "ip" => get_session_ip($config), "sess" => $session]);
             $cache->set("user-session:$name-$session", $row, 600);
         }
         return is_null($row) ? null : new User($row);
@@ -77,21 +101,22 @@ class User
         global $cache, $database;
         if ($id === 1) {
             $cached = $cache->get('user-id:'.$id);
-            if ($cached) {
+            if (!is_null($cached)) {
                 return new User($cached);
             }
         }
-        $row = $database->get_row("SELECT * FROM users WHERE id = :id", ["id"=>$id]);
+        $row = $database->get_row("SELECT * FROM users WHERE id = :id", ["id" => $id]);
         if ($id === 1) {
             $cache->set('user-id:'.$id, $row, 600);
         }
         return is_null($row) ? null : new User($row);
     }
 
+    #[Query(name: "user")]
     public static function by_name(string $name): ?User
     {
         global $database;
-        $row = $database->get_row("SELECT * FROM users WHERE LOWER(name) = LOWER(:name)", ["name"=>$name]);
+        $row = $database->get_row("SELECT * FROM users WHERE LOWER(name) = LOWER(:name)", ["name" => $name]);
         return is_null($row) ? null : new User($row);
     }
 
@@ -99,7 +124,7 @@ class User
     {
         $u = User::by_name($name);
         if (is_null($u)) {
-            throw new UserDoesNotExist("Can't find any user named $name");
+            throw new UserNotFound("Can't find any user named $name");
         } else {
             return $u->id;
         }
@@ -155,7 +180,7 @@ class User
     public function set_class(string $class): void
     {
         global $database;
-        $database->execute("UPDATE users SET class=:class WHERE id=:id", ["class"=>$class, "id"=>$this->id]);
+        $database->execute("UPDATE users SET class=:class WHERE id=:id", ["class" => $class, "id" => $this->id]);
         log_info("core-user", 'Set class for '.$this->name.' to '.$class);
     }
 
@@ -163,11 +188,11 @@ class User
     {
         global $database;
         if (User::by_name($name)) {
-            throw new ScoreException("Desired username is already in use");
+            throw new InvalidInput("Desired username is already in use");
         }
         $old_name = $this->name;
         $this->name = $name;
-        $database->execute("UPDATE users SET name=:name WHERE id=:id", ["name"=>$this->name, "id"=>$this->id]);
+        $database->execute("UPDATE users SET name=:name WHERE id=:id", ["name" => $this->name, "id" => $this->id]);
         log_info("core-user", "Changed username for {$old_name} to {$this->name}");
     }
 
@@ -175,19 +200,15 @@ class User
     {
         global $database;
         $hash = password_hash($password, PASSWORD_BCRYPT);
-        if (is_string($hash)) {
-            $this->passhash = $hash;
-            $database->execute("UPDATE users SET pass=:hash WHERE id=:id", ["hash"=>$this->passhash, "id"=>$this->id]);
-            log_info("core-user", 'Set password for '.$this->name);
-        } else {
-            throw new SCoreException("Failed to hash password");
-        }
+        $this->passhash = $hash;
+        $database->execute("UPDATE users SET pass=:hash WHERE id=:id", ["hash" => $this->passhash, "id" => $this->id]);
+        log_info("core-user", 'Set password for '.$this->name);
     }
 
     public function set_email(string $address): void
     {
         global $database;
-        $database->execute("UPDATE users SET email=:email WHERE id=:id", ["email"=>$address, "id"=>$this->id]);
+        $database->execute("UPDATE users SET email=:email WHERE id=:id", ["email" => $address, "id" => $this->id]);
         log_info("core-user", 'Set email for '.$this->name);
     }
 
@@ -196,6 +217,16 @@ class User
      * a local file, a remote file, a gravatar, a something else, etc.
      */
     public function get_avatar_html(): string
+    {
+        $url = $this->get_avatar_url();
+        if (!empty($url)) {
+            return "<img alt='avatar' class=\"avatar gravatar\" src=\"$url\">";
+        }
+        return "";
+    }
+
+    #[Field(name: "avatar_url")]
+    public function get_avatar_url(): ?string
     {
         // FIXME: configurable
         global $config;
@@ -206,10 +237,10 @@ class User
                 $d = urlencode($config->get_string("avatar_gravatar_default"));
                 $r = $config->get_string("avatar_gravatar_rating");
                 $cb = date("Y-m-d");
-                return "<img alt='avatar' class=\"avatar gravatar\" src=\"https://www.gravatar.com/avatar/$hash.jpg?s=$s&d=$d&r=$r&cacheBreak=$cb\">";
+                return "https://www.gravatar.com/avatar/$hash.jpg?s=$s&d=$d&r=$r&cacheBreak=$cb";
             }
         }
-        return "";
+        return null;
     }
 
     /**
@@ -229,26 +260,5 @@ class User
         $salt = DATABASE_DSN;
         $addr = get_session_ip($config);
         return md5(md5($this->passhash . $addr) . "salty-csrf-" . $salt);
-    }
-
-    public function get_auth_html(): string
-    {
-        $at = $this->get_auth_token();
-        return '<input type="hidden" name="auth_token" value="'.$at.'">';
-    }
-
-    public function check_auth_token(): bool
-    {
-        if (defined("UNITTEST")) {
-            return true;
-        }
-        return (isset($_POST["auth_token"]) && $_POST["auth_token"] == $this->get_auth_token());
-    }
-
-    public function ensure_authed(): void
-    {
-        if (!$this->check_auth_token()) {
-            die("Invalid auth token");
-        }
     }
 }

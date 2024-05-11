@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 // Tagger AJAX back-end
 class TaggerXML extends Extension
 {
@@ -10,20 +12,20 @@ class TaggerXML extends Extension
         return 10;
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         if ($event->page_matches("tagger/tags")) {
             global $page;
 
             //$match_tags = null;
             //$image_tags = null;
-            $tags=null;
-            if (isset($_GET['s'])) { // tagger/tags[/...]?s=$string
+            $tags = null;
+            if ($event->get_GET('s')) { // tagger/tags[/...]?s=$string
                 // return matching tags in XML form
-                $tags = $this->match_tag_list($_GET['s']);
-            } elseif ($event->get_arg(0)) { // tagger/tags/$int
+                $tags = $this->match_tag_list($event->get_GET('s'));
+            } elseif ($event->page_matches("tagger/tags/{image_id}")) { // tagger/tags/$int
                 // return arg[1] AS image_id's tag list in XML form
-                $tags = $this->image_tag_list(int_escape($event->get_arg(0)));
+                $tags = $this->image_tag_list($event->get_iarg('image_id'));
             }
 
             $xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n".
@@ -53,10 +55,10 @@ class TaggerXML extends Extension
         // Match
         $match = "concat(:p, tag) LIKE :sq";
         // Exclude
-        //		$exclude = $event->get_arg(1)? "AND NOT IN ".$this->image_tags($event->get_arg(1)) : null;
+        //		$exclude = $event->get_arg('exclude')? "AND NOT IN ".$this->image_tags($event->get_arg('exclude')) : null;
 
         // Hidden Tags
-        $hidden = $config->get_string('ext-tagger_show-hidden', 'N')=='N' ?
+        $hidden = $config->get_string('ext-tagger_show-hidden', 'N') == 'N' ?
             "AND substring(tag,1,1) != '.'" : null;
 
         $q_where = "WHERE {$match} {$hidden} AND count > 0";
@@ -67,10 +69,10 @@ class TaggerXML extends Extension
             $q_from = "FROM (SELECT * FROM `tags` {$q_where} ".
                 "ORDER BY count DESC LIMIT {$limit_rows} OFFSET 0) AS `c_tags`";
             $q_where = null;
-            $count = ["max"=>$count];
+            $count = ["max" => $count];
         } else {
             $q_from = "FROM `tags`";
-            $count = null;
+            $count = [];
         }
 
         $tags = $database->execute(
@@ -91,44 +93,41 @@ class TaggerXML extends Extension
         $tags = $database->execute("
 			SELECT tags.*
 			FROM image_tags JOIN tags ON image_tags.tag_id = tags.id
-			WHERE image_id=:image_id ORDER BY tag", ['image_id'=>$image_id]);
+			WHERE image_id=:image_id ORDER BY tag", ['image_id' => $image_id]);
         return $this->list_to_xml($tags, "image", (string)$image_id);
     }
 
-    private function list_to_xml(PDOStatement $tags, string $type, string $query, ?array$misc=null): string
+    /**
+     * @param array<string, mixed> $misc
+     */
+    private function list_to_xml(\FFSPHP\PDOStatement $tags, string $type, string $query, ?array $misc = []): string
     {
-        $r = $tags->_numOfRows;
-
-        $s_misc = "";
+        $props = [
+            "id" => $type,
+            "query" => $query,
+            // @phpstan-ignore-next-line
+            "rows" => $tags->_numOfRows
+        ];
         if (!is_null($misc)) {
             foreach ($misc as $attr => $val) {
-                $s_misc .= " ".$attr."=\"".$val."\"";
+                $props[$attr] = $val;
             }
         }
 
-        $result = "<list id=\"$type\" query=\"$query\" rows=\"$r\"{$s_misc}>";
+        $list = new \MicroHTML\HTMLElement("list", [$props]);
         foreach ($tags as $tag) {
-            $result .= $this->tag_to_xml($tag);
+            $list->appendChild(new \MicroHTML\HTMLElement("tag", [["id" => $tag["id"], "count" => $tag["count"]], $tag["tag"]]));
         }
-        return $result."</list>";
+
+        return (string)($list);
     }
 
-    private function tag_to_xml(PDORow $tag): string
-    {
-        return
-            "<tag  ".
-                "id=\"".$tag['id']."\" ".
-                "count=\"".$tag['count']."\">".
-                html_escape($tag['tag']).
-                "</tag>";
-    }
-
-    private function count(string $query, $values)
+    /**
+     * @param array<string, string> $values
+     */
+    private function count(string $query, array $values): int
     {
         global $database;
-        return $database->execute(
-            "SELECT COUNT(*) FROM `tags` $query",
-            $values
-        )->fields['COUNT(*)'];
+        return $database->get_one("SELECT COUNT(*) FROM `tags` $query", $values);
     }
 }

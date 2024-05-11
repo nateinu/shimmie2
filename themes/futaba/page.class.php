@@ -2,15 +2,11 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class Page extends BasePage
 {
-    public bool $left_enabled = true;
-    public function disable_left()
-    {
-        $this->left_enabled = false;
-    }
-
-    public function render()
+    public function body_html(): string
     {
         $left_block_html = "";
         $main_block_html = "";
@@ -25,7 +21,7 @@ class Page extends BasePage
                     $main_block_html .= $block->get_html(false);
                     break;
                 case "subheading":
-                    $sub_block_html .= $block->body; // $this->block_to_html($block, true);
+                    $sub_block_html .= $block->body;
                     break;
                 default:
                     print "<p>error: {$block->header} using an unknown section ({$block->section})";
@@ -48,14 +44,9 @@ class Page extends BasePage
         }
 
         $flash_html = $this->flash ? "<b id='flash'>".nl2br(html_escape(implode("\n", $this->flash)))."</b>" : "";
-        $head_html = $this->head_html();
         $footer_html = $this->footer_html();
 
-        print <<<EOD
-<!doctype html>
-<html class="no-js" lang="en">
-    $head_html
-	<body>
+        return <<<EOD
 		<header>
 			<h1>{$this->heading}</h1>
 			$subheading
@@ -70,8 +61,6 @@ class Page extends BasePage
 			<hr>
 			$footer_html
 		</footer>
-	</body>
-</html>
 EOD;
     }
 }

@@ -2,9 +2,14 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class BulkActionsTheme extends Themelet
 {
-    public function display_selector(Page $page, array $actions, string $query)
+    /**
+     * @param array<array{block:string,access_key:?string,confirmation_message:string,action:string,button_text:string,position:int}> $actions
+     */
+    public function display_selector(Page $page, array $actions, string $query): void
     {
         $body = "<input type='hidden' name='bulk_selected_ids' id='bulk_selected_ids' />
 				<input id='bulk_selector_activate' type='button' onclick='activate_bulk_selector();' value='Activate (M)anual Select' accesskey='m'/>
@@ -24,14 +29,14 @@ class BulkActionsTheme extends Themelet
 					</td></tr></table>
 		";
 
-        $hasQuery = ($query != null && $query != "");
+        $hasQuery = !empty($query);
 
         if ($hasQuery) {
             $body .= "</div>";
         }
 
         foreach ($actions as $action) {
-            $body .= "<div class='bulk_action'>" . make_form(make_link("bulk_action"), "POST", false, "", "return validate_selections(this,'" . html_escape($action["confirmation_message"]) . "');") .
+            $body .= "<div class='bulk_action'>" . make_form(make_link("bulk_action"), onsubmit: "return validate_selections(this,'" . html_escape($action["confirmation_message"]) . "');") .
                 "<input type='hidden' name='bulk_query' value='" . html_escape($query) . "'>" .
                 "<input type='hidden' name='bulk_selected_ids' />" .
                 "<input type='hidden' name='bulk_action' value='" . $action["action"] . "' />" .
@@ -49,7 +54,7 @@ class BulkActionsTheme extends Themelet
 
     public function render_ban_reason_input(): string
     {
-        if (class_exists("ImageBan")) {
+        if (Extension::is_enabled(ImageBanInfo::KEY)) {
             return "<input type='text' name='bulk_ban_reason' placeholder='Ban reason (leave blank to not ban)' />";
         } else {
             return "";
@@ -59,11 +64,11 @@ class BulkActionsTheme extends Themelet
     public function render_tag_input(): string
     {
         return "<label><input type='checkbox' style='width:13px;' name='bulk_tags_replace' value='true'/>Replace tags</label>" .
-            "<input type='text' name='bulk_tags' required='required' placeholder='Enter tags here' />";
+            "<input type='text' name='bulk_tags' class='autocomplete_tags' required='required' placeholder='Enter tags here' />";
     }
 
     public function render_source_input(): string
     {
-        return "<input type='text' name='bulk_source' required='required' placeholder='Enter source here' />";
+        return "<input type='text' name='bulk_source' placeholder='Enter source here' />";
     }
 }

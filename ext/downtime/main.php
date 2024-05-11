@@ -2,24 +2,26 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
 class Downtime extends Extension
 {
     /** @var DowntimeTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
     public function get_priority(): int
     {
         return 10;
     }
 
-    public function onSetupBuilding(SetupBuildingEvent $event)
+    public function onSetupBuilding(SetupBuildingEvent $event): void
     {
         $sb = $event->panel->create_new_block("Downtime");
         $sb->add_bool_option("downtime", "Disable non-admin access: ");
         $sb->add_longtext_option("downtime_message", "<br>");
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $config, $page, $user;
 
@@ -28,7 +30,7 @@ class Downtime extends Extension
                 $msg = $config->get_string("downtime_message");
                 $this->theme->display_message($msg);
                 if (!defined("UNITTEST")) {  // hax D:
-                    header("HTTP/1.0 {$page->code} Downtime");
+                    header("HTTP/1.1 {$page->code} Downtime");
                     print($page->data);
                     exit;
                 }

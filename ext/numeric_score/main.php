@@ -2,6 +2,91 @@
 
 declare(strict_types=1);
 
+namespace Shimmie2;
+
+use GQLA\Type;
+use GQLA\Field;
+use GQLA\Mutation;
+
+#[Type(name: "NumericScoreVote")]
+class NumericScoreVote
+{
+    public int $image_id;
+    public int $user_id;
+
+    #[Field]
+    public int $score;
+
+    #[Field]
+    public function post(): Image
+    {
+        return Image::by_id_ex($this->image_id);
+    }
+
+    #[Field]
+    public function user(): User
+    {
+        return User::by_id($this->user_id);
+    }
+
+    #[Field(extends: "Post")]
+    public static function score(Image $post): int
+    {
+        global $database;
+        if ($post['score'] ?? null) {
+            return $post['score'];
+        }
+        return $database->get_one(
+            "SELECT sum(score) FROM numeric_score_votes WHERE image_id=:image_id",
+            ['image_id' => $post->id]
+        ) ?? 0;
+    }
+
+    /**
+     * @return NumericScoreVote[]
+     */
+    #[Field(extends: "Post", type: "[NumericScoreVote!]!")]
+    public static function votes(Image $post): array
+    {
+        global $database;
+        $rows = $database->get_all(
+            "SELECT * FROM numeric_score_votes WHERE image_id=:image_id",
+            ['image_id' => $post->id]
+        );
+        $votes = [];
+        foreach ($rows as $row) {
+            $nsv = new NumericScoreVote();
+            $nsv->image_id = $row["image_id"];
+            $nsv->user_id = $row["user_id"];
+            $nsv->score = $row["score"];
+            $votes[] = $nsv;
+        }
+        return $votes;
+    }
+
+    #[Field(extends: "Post", type: "Int!")]
+    public static function my_vote(Image $post): int
+    {
+        global $database, $user;
+        return $database->get_one(
+            "SELECT score FROM numeric_score_votes WHERE image_id=:image_id AND user_id=:user_id",
+            ['image_id' => $post->id, "user_id" => $user->id]
+        ) ?? 0;
+    }
+
+    #[Mutation]
+    public static function create_vote(int $post_id, int $score): bool
+    {
+        global $user;
+        if ($user->can(Permissions::CREATE_VOTE)) {
+            assert($score == 0 || $score == -1 || $score == 1);
+            send_event(new NumericScoreSetEvent($post_id, $user, $score));
+            return true;
+        }
+        return false;
+    }
+}
+
 class NumericScoreSetEvent extends Event
 {
     public int $image_id;
@@ -20,43 +105,47 @@ class NumericScoreSetEvent extends Event
 class NumericScore extends Extension
 {
     /** @var NumericScoreTheme */
-    protected ?Themelet $theme;
+    protected Themelet $theme;
 
-    public function onDisplayingImage(DisplayingImageEvent $event)
+    public function onInitExt(InitExtEvent $event): void
+    {
+        Image::$prop_types["numeric_score"] = ImagePropType::INT;
+    }
+
+    public function onDisplayingImage(DisplayingImageEvent $event): void
     {
         global $user;
-        if (!$user->is_anonymous()) {
+        if ($user->can(Permissions::CREATE_VOTE)) {
             $this->theme->get_voter($event->image);
         }
     }
 
-    public function onUserPageBuilding(UserPageBuildingEvent $event)
+    public function onUserPageBuilding(UserPageBuildingEvent $event): void
     {
         global $user;
         if ($user->can(Permissions::EDIT_OTHER_VOTE)) {
             $this->theme->get_nuller($event->display_user);
         }
 
-        $u_name = url_escape($event->display_user->name);
-        $n_up = Image::count_images(["upvoted_by={$event->display_user->name}"]);
-        $link_up = make_link("post/list/upvoted_by=$u_name/1");
-        $n_down = Image::count_images(["downvoted_by={$event->display_user->name}"]);
-        $link_down = make_link("post/list/downvoted_by=$u_name/1");
-        $event->add_stats("<a href='$link_up'>$n_up Upvotes</a> / <a href='$link_down'>$n_down Downvotes</a>");
+        $n_up = Search::count_images(["upvoted_by={$event->display_user->name}"]);
+        $link_up = search_link(["upvoted_by={$event->display_user->name}"]);
+        $n_down = Search::count_images(["downvoted_by={$event->display_user->name}"]);
+        $link_down = search_link(["downvoted_by={$event->display_user->name}"]);
+        $event->add_part("<a href='$link_up'>$n_up Upvotes</a> / <a href='$link_down'>$n_down Downvotes</a>");
     }
 
-    public function onPageRequest(PageRequestEvent $event)
+    public function onPageRequest(PageRequestEvent $event): void
     {
         global $config, $database, $user, $page;
 
-        if ($event->page_matches("numeric_score_votes")) {
-            $image_id = int_escape($event->get_arg(0));
+        if ($event->page_matches("numeric_score_votes/{image_id}")) {
+            $image_id = $event->get_iarg('image_id');
             $x = $database->get_all(
                 "SELECT users.name as username, user_id, score
 				FROM numeric_score_votes
 				JOIN users ON numeric_score_votes.user_id=users.id
 				WHERE image_id=:image_id",
-                ['image_id'=>$image_id]
+                ['image_id' => $image_id]
             );
             $html = "<table style='width: 100%;'>";
             foreach ($x as $vote) {
@@ -67,123 +156,105 @@ class NumericScore extends Extension
                 $html .= "</td></tr>";
             }
             die($html);
-        } elseif ($event->page_matches("numeric_score_vote") && $user->check_auth_token()) {
-            if (!$user->is_anonymous()) {
-                $image_id = int_escape($_POST['image_id']);
-                $char = $_POST['vote'];
-                $score = null;
-                if ($char == "up") {
-                    $score = 1;
-                } elseif ($char == "null") {
-                    $score = 0;
-                } elseif ($char == "down") {
-                    $score = -1;
-                }
-                if (!is_null($score) && $image_id>0) {
-                    send_event(new NumericScoreSetEvent($image_id, $user, $score));
-                }
-                $page->set_mode(PageMode::REDIRECT);
-                $page->set_redirect(make_link("post/view/$image_id"));
+        } elseif ($event->page_matches("numeric_score_vote", method: "POST", permission: Permissions::CREATE_VOTE)) {
+            $image_id = int_escape($event->req_POST("image_id"));
+            $score = int_escape($event->req_POST("vote"));
+            if (($score == -1 || $score == 0 || $score == 1) && $image_id > 0) {
+                send_event(new NumericScoreSetEvent($image_id, $user, $score));
             }
-        } elseif ($event->page_matches("numeric_score/remove_votes_on") && $user->check_auth_token()) {
-            if ($user->can(Permissions::EDIT_OTHER_VOTE)) {
-                $image_id = int_escape($_POST['image_id']);
-                $database->execute(
-                    "DELETE FROM numeric_score_votes WHERE image_id=:image_id",
-                    ['image_id'=>$image_id]
-                );
-                $database->execute(
-                    "UPDATE images SET numeric_score=0 WHERE id=:id",
-                    ['id'=>$image_id]
-                );
-                $page->set_mode(PageMode::REDIRECT);
-                $page->set_redirect(make_link("post/view/$image_id"));
-            }
-        } elseif ($event->page_matches("numeric_score/remove_votes_by") && $user->check_auth_token()) {
-            if ($user->can(Permissions::EDIT_OTHER_VOTE)) {
-                $this->delete_votes_by(int_escape($_POST['user_id']));
-                $page->set_mode(PageMode::REDIRECT);
-                $page->set_redirect(make_link());
-            }
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
+        } elseif ($event->page_matches("numeric_score/remove_votes_on", method: "POST", permission: Permissions::EDIT_OTHER_VOTE)) {
+            $image_id = int_escape($event->req_POST("image_id"));
+            $database->execute(
+                "DELETE FROM numeric_score_votes WHERE image_id=:image_id",
+                ['image_id' => $image_id]
+            );
+            $database->execute(
+                "UPDATE images SET numeric_score=0 WHERE id=:id",
+                ['id' => $image_id]
+            );
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link("post/view/$image_id"));
+        } elseif ($event->page_matches("numeric_score/remove_votes_by", method: "POST", permission: Permissions::EDIT_OTHER_VOTE)) {
+            $this->delete_votes_by(int_escape($event->req_POST('user_id')));
+            $page->set_mode(PageMode::REDIRECT);
+            $page->set_redirect(make_link());
         } elseif ($event->page_matches("popular_by_day") || $event->page_matches("popular_by_month") || $event->page_matches("popular_by_year")) {
             //FIXME: popular_by isn't linked from anywhere
             list($day, $month, $year) = [date("d"), date("m"), date("Y")];
 
-            if (!empty($_GET['day'])) {
-                $D = (int) $_GET['day'];
+            if ($event->get_GET('day')) {
+                $D = (int) $event->get_GET('day');
                 $day = clamp($D, 1, 31);
             }
-            if (!empty($_GET['month'])) {
-                $M = (int) $_GET['month'];
+            if ($event->get_GET('month')) {
+                $M = (int) $event->get_GET('month');
                 $month = clamp($M, 1, 12);
             }
-            if (!empty($_GET['year'])) {
-                $Y = (int) $_GET['year'];
+            if ($event->get_GET('year')) {
+                $Y = (int) $event->get_GET('year');
                 $year = clamp($Y, 1970, 2100);
             }
 
             $totaldate = $year."/".$month."/".$day;
 
-            $sql = "SELECT id FROM images
-			        WHERE EXTRACT(YEAR FROM posted) = :year
-					";
+            $sql = "SELECT id FROM images WHERE EXTRACT(YEAR FROM posted) = :year";
             $args = ["limit" => $config->get_int(IndexConfig::IMAGES), "year" => $year];
 
             if ($event->page_matches("popular_by_day")) {
-                $sql .=
-                    "AND EXTRACT(MONTH FROM posted) = :month
-					AND EXTRACT(DAY FROM posted) = :day";
-
+                $sql .= " AND EXTRACT(MONTH FROM posted) = :month AND EXTRACT(DAY FROM posted) = :day";
                 $args = array_merge($args, ["month" => $month, "day" => $day]);
-                $dte = [$totaldate, date("F jS, Y", (strtotime($totaldate))), "\\y\\e\\a\\r\\=Y\\&\\m\\o\\n\\t\\h\\=m\\&\\d\\a\\y\\=d", "day"];
+                $current = date("F jS, Y", \Safe\strtotime($totaldate)).
+                $name = "day";
+                $fmt = "\\y\\e\\a\\r\\=Y\\&\\m\\o\\n\\t\\h\\=m\\&\\d\\a\\y\\=d";
             } elseif ($event->page_matches("popular_by_month")) {
-                $sql .=	"AND EXTRACT(MONTH FROM posted) = :month";
-
+                $sql .=	" AND EXTRACT(MONTH FROM posted) = :month";
                 $args = array_merge($args, ["month" => $month]);
-                $dte = [$totaldate, date("F Y", (strtotime($totaldate))), "\\y\\e\\a\\r\\=Y\\&\\m\\o\\n\\t\\h\\=m", "month"];
+                $current = date("F Y", \Safe\strtotime($totaldate));
+                $name = "month";
+                $fmt = "\\y\\e\\a\\r\\=Y\\&\\m\\o\\n\\t\\h\\=m";
             } elseif ($event->page_matches("popular_by_year")) {
-                $dte = [$totaldate, $year, "\\y\\e\\a\\r\=Y", "year"];
+                $current = "$year";
+                $name = "year";
+                $fmt = "\\y\\e\\a\\r\=Y";
             } else {
                 // this should never happen due to the fact that the page event is already matched against earlier.
-                throw new UnexpectedValueException("Error: Invalid page event.");
+                throw new \UnexpectedValueException("Error: Invalid page event.");
             }
             $sql .= " AND NOT numeric_score=0 ORDER BY numeric_score DESC LIMIT :limit OFFSET 0";
 
             //filter images by score != 0 + date > limit to max images on one page > order from highest to lowest score
 
-            $result = $database->get_col($sql, $args);
-            $images = [];
-            foreach ($result as $id) {
-                $images[] = Image::by_id((int)$id);
-            }
-
-            $this->theme->view_popular($images, $dte);
+            $ids = $database->get_col($sql, $args);
+            $images = Search::get_images($ids);
+            $this->theme->view_popular($images, $totaldate, $current, $name, $fmt);
         }
     }
 
-    public function onNumericScoreSet(NumericScoreSetEvent $event)
+    public function onNumericScoreSet(NumericScoreSetEvent $event): void
     {
         global $user;
         log_debug("numeric_score", "Rated >>{$event->image_id} as {$event->score}", "Rated Post");
         $this->add_vote($event->image_id, $user->id, $event->score);
     }
 
-    public function onImageDeletion(ImageDeletionEvent $event)
+    public function onImageDeletion(ImageDeletionEvent $event): void
     {
         global $database;
         $database->execute("DELETE FROM numeric_score_votes WHERE image_id=:id", ["id" => $event->image->id]);
     }
 
-    public function onUserDeletion(UserDeletionEvent $event)
+    public function onUserDeletion(UserDeletionEvent $event): void
     {
         $this->delete_votes_by($event->id);
     }
 
-    public function delete_votes_by(int $user_id)
+    public function delete_votes_by(int $user_id): void
     {
         global $database;
 
-        $image_ids = $database->get_col("SELECT image_id FROM numeric_score_votes WHERE user_id=:user_id", ['user_id'=>$user_id]);
+        $image_ids = $database->get_col("SELECT image_id FROM numeric_score_votes WHERE user_id=:user_id", ['user_id' => $user_id]);
 
         if (count($image_ids) == 0) {
             return;
@@ -195,7 +266,7 @@ class NumericScore extends Extension
             $id_list = implode(",", $chunk);
             $database->execute(
                 "DELETE FROM numeric_score_votes WHERE user_id=:user_id AND image_id IN (".$id_list.")",
-                ['user_id'=>$user_id]
+                ['user_id' => $user_id]
             );
             $database->execute("
 				UPDATE images
@@ -211,14 +282,14 @@ class NumericScore extends Extension
         }
     }
 
-    public function onParseLinkTemplate(ParseLinkTemplateEvent $event)
+    public function onParseLinkTemplate(ParseLinkTemplateEvent $event): void
     {
-        $event->replace('$score', (string)$event->image->numeric_score);
+        $event->replace('$score', (string)$event->image['numeric_score']);
     }
 
-    public function onHelpPageBuilding(HelpPageBuildingEvent $event)
+    public function onHelpPageBuilding(HelpPageBuildingEvent $event): void
     {
-        if ($event->key===HelpPages::SEARCH) {
+        if ($event->key === HelpPages::SEARCH) {
             $block = new Block();
             $block->header = "Numeric Score";
             $block->body = $this->theme->get_help_html();
@@ -226,7 +297,7 @@ class NumericScore extends Extension
         }
     }
 
-    public function onSearchTermParse(SearchTermParseEvent $event)
+    public function onSearchTermParse(SearchTermParseEvent $event): void
     {
         if (is_null($event->term)) {
             return;
@@ -246,7 +317,7 @@ class NumericScore extends Extension
             }
             $event->add_querylet(new Querylet(
                 "images.id in (SELECT image_id FROM numeric_score_votes WHERE user_id=:ns_user_id AND score=1)",
-                ["ns_user_id"=>$duser->id]
+                ["ns_user_id" => $duser->id]
             ));
         } elseif (preg_match("/^downvoted_by[=|:](.*)$/i", $event->term, $matches)) {
             $duser = User::by_name($matches[1]);
@@ -257,19 +328,19 @@ class NumericScore extends Extension
             }
             $event->add_querylet(new Querylet(
                 "images.id in (SELECT image_id FROM numeric_score_votes WHERE user_id=:ns_user_id AND score=-1)",
-                ["ns_user_id"=>$duser->id]
+                ["ns_user_id" => $duser->id]
             ));
         } elseif (preg_match("/^upvoted_by_id[=|:](\d+)$/i", $event->term, $matches)) {
             $iid = int_escape($matches[1]);
             $event->add_querylet(new Querylet(
                 "images.id in (SELECT image_id FROM numeric_score_votes WHERE user_id=:ns_user_id AND score=1)",
-                ["ns_user_id"=>$iid]
+                ["ns_user_id" => $iid]
             ));
         } elseif (preg_match("/^downvoted_by_id[=|:](\d+)$/i", $event->term, $matches)) {
             $iid = int_escape($matches[1]);
             $event->add_querylet(new Querylet(
                 "images.id in (SELECT image_id FROM numeric_score_votes WHERE user_id=:ns_user_id AND score=-1)",
-                ["ns_user_id"=>$iid]
+                ["ns_user_id" => $iid]
             ));
         } elseif (preg_match("/^order[=|:](?:numeric_)?(score)(?:_(desc|asc))?$/i", $event->term, $matches)) {
             $default_order_for_column = "DESC";
@@ -278,36 +349,36 @@ class NumericScore extends Extension
         }
     }
 
-    public function onTagTermCheck(TagTermCheckEvent $event)
+    public function onTagTermCheck(TagTermCheckEvent $event): void
     {
         if (preg_match("/^vote[=|:](up|down|remove)$/i", $event->term)) {
             $event->metatag = true;
         }
     }
 
-    public function onTagTermParse(TagTermParseEvent $event)
+    public function onTagTermParse(TagTermParseEvent $event): void
     {
         $matches = [];
 
         if (preg_match("/^vote[=|:](up|down|remove)$/", $event->term, $matches)) {
             global $user;
             $score = ($matches[1] == "up" ? 1 : ($matches[1] == "down" ? -1 : 0));
-            if (!$user->is_anonymous()) {
+            if ($user->can(Permissions::CREATE_VOTE)) {
                 send_event(new NumericScoreSetEvent($event->image_id, $user, $score));
             }
         }
     }
 
-    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event)
+    public function onPageSubNavBuilding(PageSubNavBuildingEvent $event): void
     {
-        if ($event->parent=="posts") {
+        if ($event->parent == "posts") {
             $event->add_nav_link("numeric_score_day", new Link('popular_by_day'), "Popular by Day");
             $event->add_nav_link("numeric_score_month", new Link('popular_by_month'), "Popular by Month");
             $event->add_nav_link("numeric_score_year", new Link('popular_by_year'), "Popular by Year");
         }
     }
 
-    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event)
+    public function onDatabaseUpgrade(DatabaseUpgradeEvent $event): void
     {
         global $database;
 
@@ -331,7 +402,7 @@ class NumericScore extends Extension
         }
     }
 
-    private function add_vote(int $image_id, int $user_id, int $score)
+    private function add_vote(int $image_id, int $user_id, int $score): void
     {
         global $database;
         $database->execute(
